@@ -751,3 +751,338 @@ void UGSAttributeSetBase::OnAttributeAggregatorCreated(const FGameplayAttribute&
 자격을 위한 커스텀 `AggregatorEvaluateMetaData`는 `FAggregatorEvaluateMetaDataLibrary`에 정적 변수로 추가해야 합니다.
 
 **[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge"></a>
+### 4.5 Gameplay Effects
+
+<a name="concepts-ge-definition"></a>
+
+#### 4.5.1 Gameplay Effect 정의
+
+[`GameplayEffects`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/UGameplayEffect/index.html)(`GE`)는 Ability가 자신을 포함한 다른 객체의 [`Attributes`](#concepts-a) 및 [`GameplayTags`](#concepts-gt)를 변경하기 위한 수단입니다. 즉각적인 `Attribute` 변화를 일으킬 수 있거나(예: 피해나 치유) 이동 속도 증가나 기절과 같은 장기적인 상태 버프/디버프를 적용할 수도 있습니다. `UGameplayEffect` 클래스는 단일 GameplayEffect를 정의하는 **데이터 전용** 클래스입니다. 추가적인 로직은 `GameplayEffect`에 포함되지 않아야 합니다. 보통 디자이너는 `UGameplayEffect`의 여러 블루프린트 자식 클래스를 생성하여 사용합니다.
+
+`GameplayEffect`는 [`Modifiers`](#concepts-ge-mods)와 [`Executions` (`GameplayEffectExecutionCalculation`)](#concepts-ge-ec)을 통해 `Attribute`를 변경합니다.
+
+`GameplayEffects`에는 세 가지 지속 시간 타입을 가집니다: `Instant`, `Duration`, `Infinite`
+
+또한, `GameplayEffect`는 [`GameplayCues`](#concepts-gc)를 추가하거나 실행할 수 있습니다. `Instant GameplayEffect`는 `GameplayCue` `GameplayTag`에서 `Execute`를 호출하는 반면, `Duration` 또는 `Infinite GameplayEffect`는 `GameplayCue` `GameplayTag`에서 `Add`와 `Remove`를 호출합니다.
+
+| Duration 타입 | GameplayCue 이벤트 | 사용 시기                                                                                                                                                                                                                                |
+| ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Instant`     | Execute           | `Attribute`의 `BaseValue`에 즉각적이고 영구적인 변화를 줄 때 사용합니다. 이 경우 `GameplayTag`는 적용되지 않으며, 한 프레임도 존재하지 않습니다.                                                                                                                  |
+| `Duration`    | Add & Remove      | `Attribute`의 `CurrentValue`를 일시적으로 변경하거나 특정 기간 동안 `GameplayTag`를 적용할 때 사용합니다. 해당 기간은 `UGameplayEffect` 클래스 또는 블루프린트에서 정의됩니다.       |
+| `Infinite`    | Add & Remove      | `Attribute`의 `CurrentValue`를 일시적으로 변경하거나 무한으로 `GameplayTag`를 적용할 때 사용합니다. 해당 Effect는 스스로 만료되지 않으며, 반드시 Ability나 `ASC`를 통해 수동으로 제거해야 합니다. |
+
+`Duration` 및 `Infinite` 타입의 `GameplayEffect`는 `Periodic Effect`(주기적 효과)를 사용할 수 있습니다. `Periodic Effect`는 설정된 주기(Period)마다 해당 `Modifier`와 `Execution`을 실행합니다. `Periodic Effect`는 `Attribute`의 `BaseValue`를 변경하거나 `GameplayCue`를 실행할 때 `Instant` 타입의 `GameplayEffect`로 처리됩니다. 이는 DOT(Damage Over Time) 같은 효과에 유용합니다.
+
+> **Note:** `Periodic Effect`는 [predicted](#concepts-p)될 수 없습니다.
+
+또한 `Duration` 및 `Infinite` 타입의 `GameplayEffect`는 `Ongoing Tag Requirement`(진행 중 태그 요구 조건)를 통해 [Gameplay Effect Tags](#concepts-ge-tags)를 일시적으로 비활성화하거나 활성화할 수 있습니다. 비활성화되면 `Modifier`와 적용된 `GameplayTag`는 제거되지만, `GameplayEffect` 자체는 제거되지 않습니다. 이후 요구 조건이 충족되면 `Modifier`와 `GameplayTag`가 다시 적용됩니다.
+
+`Duration` 또는 `Infinite` `GameplayEffect` 의 `Modifiers`를 수동으로 다시 계산해야 하는 경우(`Attribute` 에서 가져오지 않는 데이터를 사용하는 `MMC` 가 있다고 가정할 때), `UAbilitySystemComponent::ActiveGameplayEffects.SetActiveGameplayEffectLevel(FActiveGameplayEffectHandle ActiveHandle, int32 NewLevel)`을 호출하면 됩니다.`UAbilitySystemComponent::ActiveGameplayEffects.GetActiveGameplayEffect(ActiveHandle).Spec.GetLevel()` 을 사용하여 이미 가지고 있는 레벨과 동일하게 설정할 수 있습니다.
+`Attribute`를 기반으로 한 `Modifier`는 해당 `Attribute`가 업데이트될 때 자동으로 업데이트됩니다.
+
+`SetActiveGameplayEffectLevel()` 함수가 `Modifier`를 업데이트하는 핵심 작업은 다음과 같습니다:
+
+```C++
+MarkItemDirty(Effect);
+Effect.Spec.CalculateModifierMagnitudes();
+//Private 함수이기 때문에, 만약 호출할 수 있었다면 레벨을 굳이 다시 설정하지 않고도 이 세 함수를 호출했을 것입니다.
+UpdateAllAggregatorModMagnitudes(Effect);
+```
+
+`GameplayEffect`는 일반적으로 인스턴스화되지 않습니다. Ability나 `ASC`가 `GameplayEffect`를 적용할 때, `GameplayEffect`의 `ClassDefaultObject`를 기반으로 [`GameplayEffectSpec`](#concepts-ge-spec)이 생성됩니다. 성공적으로 적용된 `GameplayEffectSpec`은 `FActiveGameplayEffect`라는 구조체에 추가되며, `ASC`는 이를 특별한 컨테이너 구조체인 `ActiveGameplayEffect`에서 관리합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-applying"></a>
+
+#### 4.5.2 Gameplay Effect 적용
+
+`GameplayEffect`는 다양한 방법으로 적용할 수 있으며, 주로 [`GameplayAbilities`](#concepts-ga)의 함수나 `ASC`의 함수를 통해 이루어집니다. 이러한 함수들은 보통 `ApplyGameplayEffectTo` 형태를 가지며, 이러한 다양한 함수들은 결국 `Target`의 `UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf()`를 호출하여 Effect를 적용합니다.
+
+`GameplayAbility` 외부(예: 투사체)에서 `GameplayEffect`를 적용하려면, `Target`의 `ASC`를 가져와서 해당 ASC의 함수 중 하나를 사용해 `ApplyGameplayEffectToSelf`를 호출해야 합니다.
+
+`Duration` 또는 `Infinite` 타입의 `GameplayEffect`가 `ASC`에 적용되었을 때 이를 감지하려면, 다음과 같이 델리게이트에 바인딩하면 됩니다:
+
+```c++
+AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &APACharacterBase::OnActiveGameplayEffectAddedCallback);
+```
+
+해당 콜백 함수는 다음과 같습니다:
+
+```c++
+virtual void OnActiveGameplayEffectAddedCallback(UAbilitySystemComponent* Target, const FGameplayEffectSpec& SpecApplied, FActiveGameplayEffectHandle ActiveHandle);
+```
+
+서버는 항상 이 함수를 호출하며, 리플리케이션 모드와 관계없이 호출됩니다. Autonomous Proxy는 `Full` 및 `Mixed` 모드에서만 리플리케이트된 `GameplayEffect`에 대해 이 함수를 호출합니다. Simulated Proxy는 `Full` [replication mode](#concepts-asc-rm)에서만 이 함수를 호출합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ga-removing"></a>
+
+#### 4.5.3 Gameplay Effect 삭제
+
+`GameplayEffect`는 [`GameplayAbilities`](#concepts-ga)의 함수나 `ASC`의 함수를 통해 다양한 방식으로 제거할 수 있습니다. 일반적으로 `RemoveActiveGameplayEffect` 형태를 가지며, 이러한 함수들은 결국 `Target`의 `FActiveGameplayEffectsContainer::RemoveActiveEffects()`를 호출합니다.
+
+`GameplayAbility` 외부(예: 투사체)에서 `GameplayEffect`를 제거하려면, 타겟의 `ASC`를 가져와서 해당 ASC의 함수 중 하나를 사용해 `RemoveActiveGameplayEffect`를 호출해야 합니다.
+
+`Duration` 또는 `Infinite` 타입의 `GameplayEffect`가 `ASC`에서 제거되었을 때 이를 감지하려면, 다음과 같이 델리게이트에 바인딩하면 됩니다:
+
+```c++
+AbilitySystemComponent->OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &APACharacterBase::OnRemoveGameplayEffectCallback);
+```
+
+해당 콜백 함수는 다음과 같습니다:
+
+```c++
+virtual void OnRemoveGameplayEffectCallback(const FActiveGameplayEffect& EffectRemoved);
+```
+
+서버는 항상 이 함수를 호출하며, 리플리케이션 모드와 관계없이 호출됩니다. Autonomous Proxy는 `Full` 및 `Mixed` 모드에서만 리플리케이트된 `GameplayEffect`에 대해 이 함수를 호출합니다. Simulated Proxy는 `Full` [replication mode](#concepts-asc-rm)에서만 이 함수를 호출합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-mods"></a>
+
+#### 4.5.4 Gameplay Effect Modifiers
+
+`Modifier`는 `Attribute`를 변경하며, [예측](#concepts-p)적으로 `Attribute`를 변경할 수 있는 유일한 방법입니다. `GameplayEffect`는 `Modifier`를 0개 혹은 여러 개 가질 수 있습니다. 각 `Modifier`는 지정된 연산을 통해 하나의 `Attribute`만 변경할 수 있습니다.
+
+| 연산  | 내용                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `Add`      | `Modifier`에서 지정한 `Attribute`에 결과 값을 더합니다. 빼기를 원할 경우 음수를 사용합니다.                  |
+| `Multiply` | `Modifier`에서 지정한 `Attribute`에 결과 값을 곱합니다.                                                    |
+| `Divide`   | `Modifier`에서 지정한 `Attribute`를 결과 값으로 나눕니다.                                                  |
+| `Override` | `Modifier`에서 지정한 `Attribute`를 결과 값으로 덮어씁니다.                                                   |
+
+`Attribute`의 `CurrentValue`는 모든 `Modifier`가 `BaseValue`에 추가된 집합적인 결과입니다.
+
+`Modifier`가 어떻게 집계되는지는 `GameplayEffectAggregator.cp`p의 `FAggregatorModChannel::EvaluateWithBase`에 다음과 같은 공식으로 정의됩니다:
+
+```c++
+((InlineBaseValue + Additive) * Multiplicitive) / Division
+```
+
+`Override` `Modifier`는 최종 값을 덮어쓰며, 가장 마지막에 적용된 `Modifier`가 우선권을 가집니다.
+
+> **Note:** 퍼센트 기반의 변화를 사용할 때는 `Multiply` 연산을 사용하여 덧셈 이후에 적용되도록 하세요.
+
+> **Note:** 퍼센트 변경은 [Prediction](#concepts-p)과 함께 사용 시 문제가 발생할 수 있습니다.
+
+`Modifier`에는 네 가지 타입이 있습니다: Scalable Float, Attribute Based, Custom Calculation Class, Set By Caller. 이들은 모두 float 값을 생성하며, `Modifier`의 연산 값을 기반으로 연산을 수행해 지정된 `Attribute`를 변경합니다.
+
+| `Modifier` 타입            | 내용                                                                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Scalable Float`           | `FScalableFloat`는 Data Table의 행(변수)과 열(레벨)을 참조하는 구조체입니다. Scalable Float는 자동으로 지정된 테이블 행의 값을 Ability의 현재 레벨(또는 [`GameplayEffectSpec`](#concepts-ge-spec)에서 오버라이드된 레벨)에서 읽습니다. 이 값은 추가적으로 계수(coefficient)를 통해 조정될 수 있습니다. Data Table/Row가 지정되지 않으면 값을 1로 간주하고, 계수를 사용하여 모든 레벨에서 단일 값을 하드 코딩할 수 있습니다. ![ScalableFloat](https://github.com/tranek/GASDocumentation/raw/master/Images/scalablefloats.png)                                                                                                                                                                                                                                                                                                                                          |
+| `Attribute Based`          | `Attribute Based` `Modifier`는 `Source` (`GameplayEffectSpec`을 생성한 주체)나 `Target`(`GameplayEffectSpec`을 받은 대상)의 `CurrentValue` 또는 `BaseValue `를 사용합니다. 이 값은 계수, 전/후 추가 값을 사용해 추가적으로 수정됩니다. `Snapshotting`은 `GameplayEffectSpec`이 생성될 때 백업된 `Attribute` 값을 캡처하며, `Non-Snapshotting`은 `GameplayEffectSpec`이 적용될 때 값을 캡처합니다.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `Custom Calculation Class` | `Custom Calculation Class`는 복잡한 `Modifier`에 가장 큰 유연성을 제공합니다. 이 `Modifier`는 [`ModifierMagnitudeCalculation`](#concepts-ge-mmc) 클래스를 사용하며, 추가적으로 계수와 전/후 추가 값을 사용해 결과 float 값을 수정할 수 있습니다.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `Set By Caller`            | `SetByCaller` `Modifier`는 런타임에 Ability 또는 `GameplayEffectSpec`을 생성한 주체가 외부에서 값을 설정하는 Modifier입니다. 예를 들어, 플레이어가 버튼을 누른 시간에 따라 Ability의 피해량을 설정하려면 `SetByCaller`를 사용할 수 있습니다. `SetByCaller`는 `TMap<FGameplayTag, float>`으로 `GameplayEffectSpec`에 저장됩니다. `Modifier`는 `Aggregator`에 지정된 `GameplayTag`와 연결된 `SetByCaller` 값을 확인하도록 지시합니다. `GameplayTag` 버전만 사용할 수 있으며 `FName` 버전은 비활성화됩니다. `Modifier`가 `SetByCaller`로 설정되었지만 `GameplayEffectSpec`에 올바른 `GameplayTag`와 연결된 `SetByCaller`가 존재하지 않는 경우, 런타임 오류가 발생하고 값이 0으로 반환됩니다. `Divide` 연산의 경우 문제가 발생할 수 있습니다. [`SetByCallers`](#concepts-ge-spec-setbycaller)의 사용 방법에 대한 더 많은 정보는 `SetByCaller `관련 문서를 참조하세요. |
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+##### 4.5.4.1 Multiply 및 Divide Modifiers
+
+기본적으로, 모든 `Multiply` 및 `Divide` `Modifier`는 `Attribute`의 `BaseValue`에 곱하거나 나누기 전에 서로 더해집니다.
+
+```c++
+float FAggregatorModChannel::EvaluateWithBase(float InlineBaseValue, const FAggregatorEvaluateParameters& Parameters) const
+{
+	...
+	float Additive = SumMods(Mods[EGameplayModOp::Additive], GameplayEffectUtilities::GetModifierBiasByModifierOp(EGameplayModOp::Additive), Parameters);
+	float Multiplicitive = SumMods(Mods[EGameplayModOp::Multiplicitive], GameplayEffectUtilities::GetModifierBiasByModifierOp(EGameplayModOp::Multiplicitive), Parameters);
+	float Division = SumMods(Mods[EGameplayModOp::Division], GameplayEffectUtilities::GetModifierBiasByModifierOp(EGameplayModOp::Division), Parameters);
+	...
+	return ((InlineBaseValue + Additive) * Multiplicitive) / Division;
+	...
+}
+```
+
+```c++
+float FAggregatorModChannel::SumMods(const TArray<FAggregatorMod>& InMods, float Bias, const FAggregatorEvaluateParameters& Parameters)
+{
+	float Sum = Bias;
+
+	for (const FAggregatorMod& Mod : InMods)
+	{
+		if (Mod.Qualifies())
+		{
+			Sum += (Mod.EvaluatedMagnitude - Bias);
+		}
+	}
+
+	return Sum;
+}
+```
+*from `GameplayEffectAggregator.cpp`*
+
+이 공식에서 `Multiply`와 `Divide` `Modifier`는 `Bias` 값이 `1`로 설정됩니다. (참고로 `Addition`은 `Bias`가 `0`입니다.) 위 코드는 다음과 같이 해석됩니다:
+
+```
+1 + (Mod1.Magnitude - 1) + (Mod2.Magnitude - 1) + ...
+```
+
+위 공식은 몇 가지 예상치 못한 결과를 초래합니다. 첫째, 이 공식은 모든 Modifier를 더한 후 `BaseValue`에 곱하거나 나누어 적용합니다. 대부분의 사람들은 서로 곱하거나 나누어 계산될 것이라고 예상합니다. 예를 들어 `Multiply Modifier`가 1.5인 경우 두 개를 적용하면 `BaseValue`가 `1.5 x 1.5 = 2.25`배가 되어야 할 것으로 예상하지만, 실제로는 `1.5 + 1.5 = 2`가 되어 `BaseValue`에 `2`를 곱하게 됩니다 (`50% 증가 + 또 다른 50% 증가 = 100% 증가`). 이 예시는 `GameplayPrediction.h`의 예시와 같습니다. 기본 속도 `500`에 `10%` 속도 버프를 적용하면 `550`이 됩니다. 여기에 또 다른 `10%` 버프를 추가하면 `600`이 됩니다.
+
+그리고 둘째, 이 공식은 Paragon에 맞게 설계되었기 때문에 값에 대해 문서화되지 않은 규칙이 있습니다.
+
+Multiply와 Divide의 덧셈 공식에 대한 규칙:
+* 규칙 1: `(값이 1 미만인 항이 1개 이하) AND (여러 개의 값이 [1, 2) 범위에 존재 가능)`
+* 규칙 2: `(값이 2 이상인 항은 하나만 존재 가능)`
+
+이 공식에서 `Bias`는 범위 `[1, 2)` 내의 숫자의 정수 자릿수를 빼줍니다. 첫 번째 `Modifier`의 `Bias`는 합산 시작 값에서 빼지기 때문에 (합산 시작 값은 루프 전에 Bias로 설정됨), 개별 값 하나만 있을 때는 작동하며, `1 미만의 값`이 하나만 존재하는 경우에도 제대로 작동합니다.
+
+`Multiply`의 몇 가지 예시:
+Multipliers: `0.5`  
+`1 + (0.5 - 1) = 0.5`, correct
+
+Multipliers: `0.5, 0.5` 
+`1 + (0.5 - 1) + (0.5 - 1) = 0`.
+
+혹시 1을 예상하셨나요? `Multiply Modifier`가 여러 개 있는 경우 `1 미만의 값`은 의미가 없습니다. Paragon은 [greatest negative value for `Multiply` `Modifiers`](#cae-nonstackingge)만 사용하도록 설계되었기 때문에 1 미만의 값이 하나만 존재하게 됩니다.
+
+Multipliers: `1.1, 0.5`  
+`1 + (0.5 - 1) + (1.1 - 1) = 0.6`, correct
+
+Multipliers: `5, 5`  
+`1 + (5 - 1) + (5 - 1) = 9`.
+혹시 10을 예상하셨나요? `Modifier의 합계`는 항상`sum of the Modifiers - number of Modifiers + 1`이 됩니다.
+
+많은 게임들은 `Multiply`와 `Divide` `Modifier`가 `BaseValue`에 곱하거나 나누어지기 전에 서로 곱하고 나누어지기를 원합니다. 이를 구현하려면 `FAggregatorModChannel::EvaluateWithBase()`의 **엔진 코드**를 변경해야 합니다.
+
+```c++
+float FAggregatorModChannel::EvaluateWithBase(float InlineBaseValue, const FAggregatorEvaluateParameters& Parameters) const
+{
+	...
+	float Multiplicitive = MultiplyMods(Mods[EGameplayModOp::Multiplicitive], Parameters);
+	float Division = MultiplyMods(Mods[EGameplayModOp::Division], Parameters);
+	...
+
+	return ((InlineBaseValue + Additive) * Multiplicitive) / Division;
+}
+```
+
+```c++
+float FAggregatorModChannel::MultiplyMods(const TArray<FAggregatorMod>& InMods, const FAggregatorEvaluateParameters& Parameters)
+{
+	float Multiplier = 1.0f;
+
+	for (const FAggregatorMod& Mod : InMods)
+	{
+		if (Mod.Qualifies())
+		{
+			Multiplier *= Mod.EvaluatedMagnitude;
+		}
+	}
+
+	return Multiplier;
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-mods-gameplaytags"></a>
+##### 4.5.4.2 Modifier의 GameplayTag
+
+`SourceTag`와 `TargetTag`는 각 [Modifier](#concepts-ge-mods)에 대해 설정할 수 있습니다. 이들은 `GameplayEffect`의 [`Application Tag requirements`](#concepts-ge-tags)처럼 작동합니다. 즉, 태그는 효과가 적용될 때만 고려됩니다. 예를 들어, 주기적인 Infinite GameplayEffect에서는 첫 번째 적용 시에만 태그가 고려되고, Periodic Execution에서는 고려되지 않습니다.
+
+`Attribute Based` Modifier는 또한 `SourceTagFilter`와 `TargetTagFilter`를 설정할 수 있습니다. 이 필터들은 `Attribute Based` Modifier의 소스가 되는 Attribute의 Magnitude를 결정할 때 사용되어 특정 Modifier를 그 Attribute에서 제외시킵니다. 소스 또는 타겟에 필터의 모든 태그가 없을 경우 해당 Modifier는 제외됩니다.
+
+위 내용은 다음을 의미합니다:
+source ASC와 target ASC의 태그는 `GameplayEffect`에 의해 캡처됩니다. source ASC 태그는 `GameplayEffectSpec`이 생성될 때 캡처되고, target ASC 태그는 효과가 실행될 때 캡처됩니다. Infinite GameplayEffect나 Duration GameplayEffect의 Modifier가 적용될 자격이 있는지(즉, Aggregator가 자격이 있는지) 결정할 때 필터가 설정된 경우, 캡처된 태그는 필터와 비교됩니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-stacking"></a>
+
+#### 4.5.5 Gameplay Effect Stacking(중첩)
+
+기본적으로 `GameplayEffect`는 새로운 인스턴스를 적용할 때 이전에 존재한 `GameplayEffectSpec`에 대해 알지 못하고 신경 쓰지 않습니다. `GameplayEffect`는 스택되도록 설정할 수 있으며, 이 경우 새로운 `GameplayEffectSpec` 인스턴스가 추가되는 대신 현재 존재하는 `GameplayEffectSpec`의 스택 수가 변경됩니다. 스택은 `Duration`과 `Infinite`에서만 동작합니다.
+
+스택에는 두 가지 유형이 있습니다:Aggregate by Source와 Aggregate by Target.
+
+| 스택 유형       | 설명                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Aggregate by Source | 각 `Source ASC`마다 타겟에 대한 별도의 스택 인스턴스가 있습니다. 각 Source는 X 만큼의 스택을 적용할 수 있습니다.                     |
+| Aggregate by Target | 타겟에 대해 하나의 스택 인스턴스만 존재합니다. 각 Source는 공유된 스택 한도까지 스택을 적용할 수 있습니다. |
+
+스택에는 만료, 지속 시간 새로 고침, 주기 초기화에 대한 Policy도 있습니다. 이들에 대한 도움말 툴팁은 `GameplayEffect` Blueprint에서 확인할 수 있습니다.
+
+샘플 프로젝트에는 `GameplayEffect` 스택 변경 사항을 수신하는 커스텀 Blueprint 노드가 포함되어 있습니다. HUD UMG 위젯은 이를 사용하여 플레이어의 패시브 방어구 스택 수를 업데이트합니다. 이 `AsyncTask`는 수동으로 `EndTask()`가 호출될 때까지 계속 살아 있습니다. 호출은 UMG 위젯의 `Destruct` 이벤트에서 수행됩니다. `AsyncTaskEffectStackChanged.h/cpp`를 참조하십시오.
+
+![Listen for GameplayEffect Stack Change BP Node](https://github.com/tranek/GASDocumentation/raw/master/Images/gestackchange.png)
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-ga"></a>
+
+#### 4.5.6 Ability 부여
+
+`GameplayEffect`는 `ASC`에 새로운 [`GameplayAbilities`](#concepts-ga)를 부여할 수 있습니다. `Duration` 혹은 `Infinite` `GameplayEffect`만이 Ability를 부여할 수 있습니다.
+
+일반적인 사용 사례 중 하나는 다른 플레이어가 특정 동작(예: 넉백이나 끌어당김)에 반응하도록 강제하는 것입니다. 예를 들어, 특정 행동을 적용하기 위해 `GameplayEffect`를 그들에게 부여하고, 자동으로 활성화되는 GameplayAbility(부여 시 Ability를 자동으로 활성화하는 방법에 대해서는 [Passive Abilities](#concepts-ga-activating-passive) 참조)를 부여하면 원하는 동작이 실행됩니다.
+
+디자이너는 `GameplayEffect`가 어떤 Ability를 부여할지, 어떤 레벨로 부여할지, 어떤 입력에 [바인딩](#concepts-ga-input)할지, 그리고 부여된 Ability의 Removal Policy(제거 방침)을 선택할 수 있습니다.
+
+| 제거 정책             | 설명                                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel Ability Immediately | `GameplayEffect`가 제거될 때 부여된 Ability는 즉시 취소되고 제거됩니다.                                                   |
+| Remove Ability on End      | 부여된 Ability는 완료될 때까지 유지되며 이후 타겟에서 제거됩니다.                                                                                                   |
+| Do Nothing                 | `GameplayEffect`가 제거되더라도 부여된 Ability는 영향을 받지 않습니다. Ability는 수동으로 제거될 때까지 영구적으로 유지됩니다 |
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-tags"></a>
+
+#### 4.5.7 Gameplay Effect Tags
+
+`GameplayEffect`는 여러 개의 [`GameplayTagContainers`](#concepts-gt)를 가질 수 있습니다. 디자이너는 각 카테고리에 대해 `추가된 GameplayTagContainers`와 `제거된 GameplayTagContainers`를 설정할 수 있으며, 그 결과는 컴파일 시 `Combined` `GameplayTagContainer`에 표시됩니다.
+
+- 추가된 태그: 상위 클래스에 없던 태그를 해당 GameplayEffect가 추가하는 경우입니다.
+- 제거된 태그: 상위 클래스에는 있지만 해당 서브 클래스에는 없는 태그를 의미합니다.
+
+| 카테고리                          | 설명                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gameplay Effect Asset Tags        | `GameplayEffect`가 가진 태그입니다. 해당 태그는 별도의 기능을 수행하지 않으며 `GameplayEffect`를 설명하는 용도로만 사용됩니다.                                                                                                                                                                                                                                        |
+| Granted Tags                      | `GameplayEffect`에 존재하며, 해당 `GameplayEffect`가 적용된 `ASC`에도 전달되는 태그입니다. `GameplayEffect`가 제거되면 `ASC`에서도 태그가 제거됩니다. 이는 `Duration` 및 `Infinite` `GameplayEffect`에만 작동합니다.                                                                                                                             |
+| Ongoing Tag Requirements          | `GameplayEffect`가 적용된 후, 해당 태그들은 `GameplayEffect`가 활성(on) 또는 비활성(off) 상태인지 결정합니다. `GameplayEffect`는 비활성 상태에서도 적용될 수 있습니다. 태그 요구 사항을 충족하지 않아 비활성 상태였던 `GameplayEffect`가 요구 사항을 다시 충족하면, `GameplayEffect`는 활성화되며 그 Modifier를 다시 적용합니다. 이 기능은 `Duration` 및 `Infinite` `GameplayEffect`에서만 작동합니다. |
+| Application Tag Requirements      | `GameplayEffect`가 타겟에 적용될 수 있는지 여부를 결정하는 태그입니다. 요구 사항이 충족되지 않으면 `GameplayEffect`는 적용되지 않습니다.                                                                                                                                                                                                                      |
+| Remove Gameplay Effects with Tags | `GameplayEffect`가 성공적으로 적용되면 타겟의 `Asset Tags`나 `Granted Tags`에 해당 태그를 가진 다른 `GameplayEffect`가 제거됩니다.                                                                                                                                                                                            |
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-immunity"></a>
+#### 4.5.8 면역
+
+`GameplayEffect`는 [`GameplayTags`](#concepts-gt)를 기반으로 다른 `GameplayEffect`의 적용을 차단하는 면역(Immunity)을 부여할 수 있습니다. 면역은 `Application Tag Requirement`와 같은 다른 수단을 통해서도 효과적으로 달성할 수 있지만, 해당 시스템을 사용하면 U`AbilitySystemComponent::OnImmunityBlockGameplayEffectDelegate` 델리게이트를 통해 면역으로 인해 `GameplayEffect`가 차단되었을 때 알림을 받을 수 있습니다.
+
+`GrantedApplicationImmunityTag`는` Source ASC`(Source에 Ability가 있었던 경우 해당 Abilty의 AbilityTag도 포함)에 지정된 태그가 있는지를 검사합니다. 이를 통해 특정 캐릭터나 Source에 기반한 태그로부터 오는 `GameplayEffect`를 모두 차단할 수 있습니다.
+
+`Granted Application Immunity Query`는 들어오는 `GameplayEffectSpec`이 지정된 쿼리 중 하나와 일치하는지를 확인하여 적용을 차단하거나 허용합니다.
+
+해당 쿼리들은 `GameplayEffect` 블루프린트에서 마우스를 올리면 유용한 툴팁으로 설명을 제공해 줍니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-spec"></a>
+4.5.9 Gameplay Effect Spec
+
+[`GameplayEffectSpec`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/FGameplayEffectSpec/index.html) (`GESpec`)은 `GameplayEffect`의 인스턴스화된 버전으로 생각할 수 있습니다. GESpec은 이를 대표하는 `GameplayEffect` 클래스에 대한 참조, 생성 시점의 레벨, 그리고 이를 생성한 주체를 포함합니다. `GameplayEffect`는 디자이너가 런타임 이전에 만들어야 하는 반면, `GameplayEffectSpec`은 런타임에 자유롭게 생성 및 수정될 수 있습니다. `GameplayEffect`를 적용할 때, `GameplayEffectSpec`은 `GameplayEffect`로부터 생성되며 실제로 Target에 적용되는 것이 바로 이 GESpec입니다.
+
+`GameplayEffectSpec`은 `GameplayEffects`에서 `UAbilitySystemComponent::MakeOutgoingSpec()`을 사용해 생성되며, 해당 함수는 `BlueprintCallable`입니다. `GameplayEffectSpecs`은 즉시 적용될 필요는 없습니다. 일반적으로 `GameplayEffectSpecs`을 Ability에서 생성된 프로젝트타일에 전달하고, 해당 프로젝트타일이 나중에 맞은 대상에게 이를 적용하는 방식으로 사용됩니다. `GameplayEffectSpecs`가 성공적으로 적용되면 `FActiveGameplayEffect`라는 새로운 구조체가 반환됩니다.
+
+참고해두면 좋은 `GameplayEffectSpec`의 주요 내용:
+
+* 해당 `GameplayEffectSpec`가 생성된 `GameplayEffect` 클래스
+* `GameplayEffectSpec`의 레벨. 보통 `GameplayEffectSpec`를 생성한 Ability의 레벨과 같지만 다를 수도 있음.
+* `GameplayEffectSpec`의 지속 시간. 기본적으로 원본 `GameplayEffect`의 지속 시간이지만 다르게 설정될 수 있음.
+* `GameplayEffectSpec`의 Period(Period Effect의 경우). 기본적으로 원본 `GameplayEffect`의 Period지만 변경될 수 있음.
+* `GameplayEffectSpec`의 현재 스택 수. 스택 한계는 원본 `GameplayEffect`에 설정되어 있음.
+* [`GameplayEffectContextHandle`](#concepts-ge-context)은 해당 `GameplayEffectSpec`를 생성한 주체를 나타냄.
+* 스냅샷팅(Snapshotting)에 의해 `GameplayEffectSpec` 생성 시점에 캡처된 `Attribute`.
+* `GameplayEffect`가 부여하는 `GameplayTag` 외에 Target에게 `GameplayEffectSpec`가 추가로 부여되는 `DynamicGrantedTag`.
+* `GameplayEffect`가 가지는 `AssetTag` 외에 `GameplayEffectSpec`가 추가로 가지는 `DynamicAssetTag`.
+* `SetByCaller` `TMaps`.
+
+**[⬆ 위로 가기](#table-of-contents)**
+

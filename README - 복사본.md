@@ -841,13 +841,12 @@ Your custom `AggregatorEvaluateMetaData` for qualifiers should be added to `FAgg
 
 **[⬆ Back to Top](#table-of-contents)**
 
-======= 여기부터 ========
-
 <a name="concepts-ge"></a>
 ### 4.5 Gameplay Effects
 
 <a name="concepts-ge-definition"></a>
 #### 4.5.1 Gameplay Effect Definition
+
 [`GameplayEffects`](https://docs.unrealengine.com/en-US/API/Plugins/GameplayAbilities/UGameplayEffect/index.html) (`GE`) are the vessels through which abilities change [`Attributes`](#concepts-a) and [`GameplayTags`](#concepts-gt) on themselves and others. They can cause immediate `Attribute` changes like damage or healing or apply long term status buff/debuffs like a movespeed boost or stunning. The `UGameplayEffect` class is a meant to be a **data-only** class that defines a single gameplay effect. No additional logic should be added to `GameplayEffects`. Typically designers will create many Blueprint child classes of `UGameplayEffect`.
 
 `GameplayEffects` change `Attributes` through [`Modifiers`](#concepts-ge-mods) and [`Executions` (`GameplayEffectExecutionCalculation`)](#concepts-ge-ec).
@@ -881,6 +880,7 @@ UpdateAllAggregatorModMagnitudes(Effect);
 
 <a name="concepts-ge-applying"></a>
 #### 4.5.2 Applying Gameplay Effects
+
 `GameplayEffects` can be applied in many ways from functions on [`GameplayAbilities`](#concepts-ga) and functions on the `ASC` and usually take the form of `ApplyGameplayEffectTo`. The different functions are essentially convenience functions that will eventually call `UAbilitySystemComponent::ApplyGameplayEffectSpecToSelf()` on the `Target`.
 
 To apply `GameplayEffects` outside of a `GameplayAbility` for example from a projectile, you need to get the `Target's` `ASC` and use one of its functions to `ApplyGameplayEffectToSelf`.
@@ -899,7 +899,8 @@ The server will always call this function regardless of replication mode. The au
 **[⬆ Back to Top](#table-of-contents)**
 
 <a name="concepts-ga-removing"></a>
-#### 4.5.3 Removing Gameplay Effects
+#### 4.5.3 Removing Gameplay Effects'
+
 `GameplayEffects` can be removed in many ways from functions on [`GameplayAbilities`](#concepts-ga) and functions on the `ASC` and usually take the form of `RemoveActiveGameplayEffect`. The different functions are essentially convenience functions that will eventually call `FActiveGameplayEffectsContainer::RemoveActiveEffects()` on the `Target`.
 
 To remove `GameplayEffects` outside of a `GameplayAbility`, you need to get the `Target's` `ASC` and use one of its functions to `RemoveActiveGameplayEffect`.
@@ -919,6 +920,7 @@ The server will always call this function regardless of replication mode. The au
 
 <a name="concepts-ge-mods"></a>
 #### 4.5.4 Gameplay Effect Modifiers
+
 `Modifiers` change an `Attribute` and are the only way to [predictively](#concepts-p) change an `Attribute`. A `GameplayEffect` can have zero or many `Modifiers`. Each `Modifier` is responsible for changing only one `Attribute` via a specified operation.
 
 | Operation  | Description                                                                                                         |
@@ -941,7 +943,7 @@ Any `Override` `Modifiers` will override the final value with the last applied `
 
 There are four types of `Modifiers`: Scalable Float, Attribute Based, Custom Calculation Class, and Set By Caller. They all generate some float value that is then used to change the specified `Attribute` of the `Modifier` based on its operation.
 
-| `Modifier` Type            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Modifier` Type            | Description                                                                                                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Scalable Float`           | `FScalableFloats` are a structure that can point to a Data Table that has the variables as rows and levels as columns. The Scalable Floats will automatically read the value of the specified table row at the ability's current level (or different level if overriden on the [`GameplayEffectSpec`](#concepts-ge-spec)). This value can further be manipulated by a coefficient. If no Data Table/Row is specified, it treats the value as a 1 so the coefficient can be used to hard code in a single value at all levels. ![ScalableFloat](https://github.com/tranek/GASDocumentation/raw/master/Images/scalablefloats.png)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `Attribute Based`          | `Attribute Based` `Modifiers` take the `CurrentValue` or `BaseValue` of a backing `Attribute` on the `Source` (who created the `GameplayEffectSpec`) or `Target` (who received the `GameplayEffectSpec`) and further modifies it with a coefficient and pre and post coefficient additions. `Snapshotting` means the backing `Attribute` is captured when the `GameplayEffectSpec` is created whereas no snapshotting means the `Attribute` is captured when the `GameplayEffectSpec` is applied.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -952,6 +954,7 @@ There are four types of `Modifiers`: Scalable Float, Attribute Based, Custom Cal
 
 <a name="concepts-ge-mods-multiplydivide"></a>
 ##### 4.5.4.1 Multiply and Divide Modifiers
+
 By default, all `Multiply` and `Divide` `Modifiers` are added together before multiplying or dividing them into the `Attribute`'s `BaseValue`.
 
 ```c++
@@ -1060,6 +1063,7 @@ This means in detail: The tags of the source ASC and the target ASC are captured
 
 <a name="concepts-ge-stacking"></a>
 #### 4.5.5 Stacking Gameplay Effects
+
 `GameplayEffects` by default will apply new instances of the `GameplayEffectSpec` that don't know or care about previously existing instances of the `GameplayEffectSpec` on application. `GameplayEffects` can be set to stack where instead of a new instance of the `GameplayEffectSpec` is added, the currently existing `GameplayEffectSpec's` stack count is changed. Stacking only works for `Duration` and `Infinite` `GameplayEffects`.
 
 There are two types of stacking: Aggregate by Source and Aggregate by Target.
@@ -1079,6 +1083,7 @@ The Sample Project includes a custom Blueprint node that listens for `GameplayEf
 
 <a name="concepts-ge-ga"></a>
 #### 4.5.6 Granted Abilities
+
 `GameplayEffects` can grant new [`GameplayAbilities`](#concepts-ga) to `ASCs`. Only `Duration` and `Infinite` `GameplayEffects` can grant abilities.
 
 A common usecase for this is when you want to force another player to do something like moving them from a knockback or pull. You would apply a `GameplayEffect` to them that grants them an automatically activating ability (see [Passive Abilities](#concepts-ga-activating-passive) for how to automatically activate an ability when it is granted) that does the desired action to them.
@@ -1095,6 +1100,7 @@ Designers can choose which abilities a `GameplayEffect` grants, what level to gr
 
 <a name="concepts-ge-tags"></a>
 #### 4.5.7 Gameplay Effect Tags
+
 `GameplayEffects` carry multiple [`GameplayTagContainers`](#concepts-gt). Designers will edit the `Added` and `Removed` `GameplayTagContainers` for each category and the result will show up in the `Combined` `GameplayTagContainer` on compilation. `Added` tags are new tags that this `GameplayEffect` adds that its parents did not previously have. `Removed` tags are tags that parent classes have but this subclass does not have.
 
 | Category                          | Description                                                                                                                                                                                                                                                                                                                                                                        |
@@ -1109,6 +1115,7 @@ Designers can choose which abilities a `GameplayEffect` grants, what level to gr
 
 <a name="concepts-ge-immunity"></a>
 #### 4.5.8 Immunity
+
 `GameplayEffects` can grant immunity, effectively blocking the application of other `GameplayEffects`, based on [`GameplayTags`](#concepts-gt). While immunity can be effectively achieved through other means like `Application Tag Requirements`, using this system provides a delegate for when `GameplayEffects` are blocked due to immunity `UAbilitySystemComponent::OnImmunityBlockGameplayEffectDelegate`.
 
 `GrantedApplicationImmunityTags` checks if the Source `ASC` (including tags from the Source ability's `AbilityTags` if there was one) has any of the specified tags. This is a way to provide immunity from all `GameplayEffects` from certain characters or sources based on their tags.
@@ -1121,6 +1128,7 @@ The queries have helpful hover tooltips in the `GameplayEffect` Blueprint.
 
 <a name="concepts-ge-spec"></a>
 #### 4.5.9 Gameplay Effect Spec
+
 The [`GameplayEffectSpec`](https://docs.unrealengine.com/en-US/API/Plugins/GameplayAbilities/FGameplayEffectSpec/index.html) (`GESpec`) can be thought of as the instantiations of `GameplayEffects`. They hold a reference to the `GameplayEffect` class that they represent, what level it was created at, and who created it. These can be freely created and modified at runtime before application unlike `GameplayEffects` which should be created by designers prior to runtime. When applying a `GameplayEffect`, a `GameplayEffectSpec` is created from the `GameplayEffect` and that is actually what is applied to the Target.
 
 `GameplayEffectSpecs` are created from `GameplayEffects` using `UAbilitySystemComponent::MakeOutgoingSpec()` which is `BlueprintCallable`. `GameplayEffectSpecs` do not have to be immediately applied. It is common to pass a `GameplayEffectSpec` to a projectile created from an ability that the projectile can apply to the target it hits later. When `GameplayEffectSpecs` are successfully applied, they return a new struct called `FActiveGameplayEffect`.
@@ -1138,6 +1146,9 @@ Notable `GameplayEffectSpec` Contents:
 * `SetByCaller` `TMaps`.
 
 **[⬆ Back to Top](#table-of-contents)**
+
+== 여기부터 == 
+
 
 <a name="concepts-ge-spec-setbycaller"></a>
 ##### 4.5.9.1 SetByCallers
