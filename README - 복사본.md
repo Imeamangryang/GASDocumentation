@@ -1759,13 +1759,12 @@ To access the `GESpecs` inside of the `GameplayEffectContainers` to do things li
 **[⬆ Back to Top](#table-of-contents)**
 
 
-==== 여기부터 =====
-
 <a name="concepts-ga"></a>
 ### 4.6 Gameplay Abilities
 
 <a name="concepts-ga-definition"></a>
 #### 4.6.1 Gameplay Ability Definition
+
 [`GameplayAbilities`](https://docs.unrealengine.com/en-US/API/Plugins/GameplayAbilities/Abilities/UGameplayAbility/index.html) (`GA`) are any actions or skills that an `Actor` can do in the game. More than one `GameplayAbility` can be active at one time for example sprinting and shooting a gun. These can be made in Blueprint or C++.
 
 Examples of `GameplayAbilities`:
@@ -1801,14 +1800,17 @@ Complex abilities can be implemented using multiple `GameplayAbilities` that int
 
 <a name="concepts-ga-definition-reppolicy"></a>
 ##### 4.6.1.1 Replication Policy
+
 Don't use this option. The name is misleading and you don't need it. [`GameplayAbilitySpecs`](#concepts-ga-spec) are replicated from the server to the owning client by default. As mentioned above, **`GameplayAbilities` don't run on simulated proxies**. They use `AbilityTasks` and `GameplayCues` to replicate or RPC visual changes to the simulated proxies. Dave Ratti from Epic has stated his desire to [remove this option in the future](https://epicgames.ent.box.com/s/m1egifkxv3he3u3xezb9hzbgroxyhx89).
 
 <a name="concepts-ga-definition-remotecancel"></a>
 ##### 4.6.1.2 Server Respects Remote Ability Cancellation
+
 This option causes trouble more often than not. It means if the client's `GameplayAbility` ends either due to cancellation or natural completion, it will force the server's version to end whether it completed or not. The latter issue is the important one, especially for locally predicted `GameplayAbilities` used by players with high latencies. Generally you will want to disable this option.
 
 <a name="concepts-ga-definition-repinputdirectly"></a>
 ##### 4.6.1.3 Replicate Input Directly
+
 Setting this option will always replicate input press and release events to the server. Epic recommends not using this and instead relying on the `Generic Replicated Events` that are built into the existing input related [`AbilityTasks`](#concepts-at) if you have your [input bound to your `ASC`](#concepts-ga-input).
 
 Epic's comment:
@@ -1821,6 +1823,7 @@ UAbilitySystemComponent::ServerSetInputPressed()
 
 <a name="concepts-ga-input"></a>
 #### 4.6.2 Binding Input to the ASC
+
 The `ASC` allows you to directly bind input actions to it and assign those inputs to `GameplayAbilities` when you grant them. Input actions assigned to `GameplayAbilities` automatically activate those `GameplayAbilities` when pressed if the `GameplayTag` requirements are met. Assigned input actions are required to use the built-in `AbilityTasks` that respond to input.
 
 In addition to input actions assigned to activate `GameplayAbilities`, the `ASC` also accepts generic `Confirm` and `Cancel` inputs. These special inputs are used by `AbilityTasks` for confirming things like [`Target Actors`](#concepts-targeting-actors) or canceling them.
@@ -1871,6 +1874,7 @@ For `GameplayAbilities` that will only ever be activated by one input (they will
 
 <a name="concepts-ga-input-noactivate"></a>
 ##### 4.6.2.1 Binding to Input without Activating Abilities
+
 If you don't want your `GameplayAbilities` to automatically activate when an input is pressed but still bind them to input to use with `AbilityTasks`, you can add a new bool variable to your `UGameplayAbility` subclass, `bActivateOnInput`, that defaults to `true` and override `UAbilitySystemComponent::AbilityLocalInputPressed()`.
 
 ```c++
@@ -1930,6 +1934,7 @@ void UGSAbilitySystemComponent::AbilityLocalInputPressed(int32 InputID)
 
 <a name="concepts-ga-granting"></a>
 #### 4.6.3 Granting Abilities
+
 Granting a `GameplayAbility` to an `ASC` adds it to the `ASC's` list of `ActivatableAbilities` allowing it to activate the `GameplayAbility` at will if it meets the [`GameplayTag` requirements](#concepts-ga-tags).
 
 We grant `GameplayAbilities` on the server which then automatically replicates the [`GameplayAbilitySpec`](#concepts-ga-spec) to the owning client. Other clients / simulated proxies do not receive the `GameplayAbilitySpec`.
@@ -1960,6 +1965,7 @@ When granting these `GameplayAbilities`, we're creating `GameplayAbilitySpecs` w
 
 <a name="concepts-ga-activating"></a>
 #### 4.6.4 Activating Abilities
+
 If a `GameplayAbility` is assigned an input action, it will be automatically activated if the input is pressed and it meets its `GameplayTag` requirements. This may not always be the desirable way to activate a `GameplayAbility`. The `ASC` provides four other methods of activating `GameplayAbilities`: by `GameplayTag`, `GameplayAbility` class, `GameplayAbilitySpec` handle, and by an event. Activating a `GameplayAbility` by event allows you to [pass in a payload of data with the event](#concepts-ga-data).
 
 ```c++
@@ -1975,6 +1981,7 @@ bool TriggerAbilityFromGameplayEvent(FGameplayAbilitySpecHandle AbilityToTrigger
 
 FGameplayAbilitySpecHandle GiveAbilityAndActivateOnce(const FGameplayAbilitySpec& AbilitySpec, const FGameplayEventData* GameplayEventData);
 ```
+
 To activate a `GameplayAbility` by event, the `GameplayAbility` must have its `Triggers` set up in the `GameplayAbility`. Assign a `GameplayTag` and pick an option for `GameplayEvent`. To send the event, use the function `UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AActor* Actor, FGameplayTag EventTag, FGameplayEventData Payload)`. Activating a `GameplayAbility` by event allows you to pass in a payload with data.
 
 `GameplayAbility` `Triggers` also allow you to activate the `GameplayAbility` when a `GameplayTag` is added or removed.
@@ -2006,6 +2013,7 @@ If at any time the server fails to activate, it will call `ClientActivateAbility
 
 <a name="concepts-ga-activating-passive"></a>
 ##### 4.6.4.1 Passive Abilities
+
 To implement passive `GameplayAbilities` that automatically activate and run continuously, override `UGameplayAbility::OnAvatarSet()` which is automatically called when a `GameplayAbility` is granted and the `AvatarActor` is set and call `TryActivateAbility()`.
 
 I recommend adding a `bool` to your custom `UGameplayAbility` class specifying if the `GameplayAbility` should be activated when granted. The Sample Project does this for its passive armor stacking ability.
@@ -2066,6 +2074,7 @@ LogAbilitySystem: Display: ClientActivateAbilityFailed_Implementation. Predictio
 
 <a name="concepts-ga-cancelabilities"></a>
 #### 4.6.5 Canceling Abilities
+
 To cancel a `GameplayAbility` from within, you call `CancelAbility()`. This will call `EndAbility()` and set its `WasCancelled` parameter to true.
 
 To cancel a `GameplayAbility` externally, the `ASC` provides a few functions:
@@ -2093,6 +2102,7 @@ virtual void DestroyActiveState();
 
 <a name="concepts-ga-definition-activeability"></a>
 #### 4.6.6 Getting Active Abilities
+
 Beginners often ask "How can I get the active ability?" perhaps to set variables on it or to cancel it. More than one `GameplayAbility` can be active at a time so there is no one "active ability". Instead, you must search through an `ASC's` list of `ActivatableAbilities` (granted `GameplayAbilities` that the `ASC` owns) and find the one matching the [`Asset` or `Granted` `GameplayTag`](#concepts-ga-tags) that you are looking for.
 
 `UAbilitySystemComponent::GetActivatableAbilities()` returns a `TArray<FGameplayAbilitySpec>` for you to iterate over.
@@ -2108,6 +2118,7 @@ Once you get the `FGameplayAbilitySpec` that you are looking for, you can call `
 
 <a name="concepts-ga-instancing"></a>
 #### 4.6.7 Instancing Policy
+
 A `GameplayAbility's` `Instancing Policy` determines if and how the `GameplayAbility` is instanced when activated.
 
 | `Instancing Policy`     | Description                                                                                      | Example of when to use                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -2120,6 +2131,7 @@ A `GameplayAbility's` `Instancing Policy` determines if and how the `GameplayAbi
 
 <a name="concepts-ga-net"></a>
 #### 4.6.8 Net Execution Policy
+
 A `GameplayAbility's` `Net Execution Policy` determines who runs the `GameplayAbility` and in what order.
 
 | `Net Execution Policy` | Description                                                                                                                                                                                                         |
@@ -2133,6 +2145,7 @@ A `GameplayAbility's` `Net Execution Policy` determines who runs the `GameplayAb
 
 <a name="concepts-ga-tags"></a>
 #### 4.6.9 Ability Tags
+
 `GameplayAbilities` come with `GameplayTagContainers` with built-in logic. None of these `GameplayTags` are replicated.
 
 | `GameplayTag Container`     | Description                                                                                                                                                                                   |
@@ -2152,6 +2165,7 @@ A `GameplayAbility's` `Net Execution Policy` determines who runs the `GameplayAb
 
 <a name="concepts-ga-spec"></a>
 #### 4.6.10 Gameplay Ability Spec
+
 A `GameplayAbilitySpec` exists on the `ASC` after a `GameplayAbility` is granted and defines the activatable `GameplayAbility` - `GameplayAbility` class, level, input bindings, and runtime state that must be kept separate from the `GameplayAbility` class.
 
 When a `GameplayAbility` is granted on the server, the server replicates the `GameplayAbilitySpec` to the owning client so that she may activate it.
@@ -2162,9 +2176,10 @@ Activating a `GameplayAbilitySpec` will create an instance (or not for `Non-Inst
 
 <a name="concepts-ga-data"></a>
 #### 4.6.11 Passing Data to Abilities
+
 The general paradigm for `GameplayAbilities` is `Activate->Generate Data->Apply->End`. Sometimes you need to act on existing data. GAS provides a few options for getting external data into your `GameplayAbilities`:
 
-| Method                                          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Method                                          | Description                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Activate `GameplayAbility` by Event             | Activate a `GameplayAbility` with an event containing a payload of data. The event's payload is replicated from client to server for local predicted `GameplayAbilities`. Use the two `Optional Object` or the [`TargetData`](#concepts-targeting-data) variables for arbitrary data that does not fit any of the existing variables. The downside to this is that it prevents you from activating the ability with an input bind. To activate a `GameplayAbility` by event, the `GameplayAbility` must have its `Triggers` set up in the `GameplayAbility`. Assign a `GameplayTag` and pick an option for `GameplayEvent`. To send the event, use the function `UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AActor* Actor, FGameplayTag EventTag, FGameplayEventData Payload)`. |
 | Use `WaitGameplayEvent` `AbilityTask`           | Use the `WaitGameplayEvent` `AbilityTask` to tell the `GameplayAbility` to listen for an event with payload data after it activates. The event payload and the process to send it is the same as activating `GameplayAbilities` by event. The downside to this is that events are not replicated by the `AbilityTask` and should only be used for `Local Only` and `Server Only` `GameplayAbilities`. You potentially could write your own `AbilityTask` that will replicate the event payload.                                                                                                                                                                                                                                                                                               |
@@ -2175,6 +2190,7 @@ The general paradigm for `GameplayAbilities` is `Activate->Generate Data->Apply-
 
 <a name="concepts-ga-commit"></a>
 #### 4.6.12 Ability Cost and Cooldown
+
 `GameplayAbilities` come with functionality for optional costs and cooldowns. Costs are predefined amounts of `Attributes` that the `ASC` must have in order to activate the `GameplayAbility` implemented with an `Instant` `GameplayEffect` ([`Cost GE`](#concepts-ge-cost)). Cooldowns are timers that prevent the reactivation of a `GameplayAbility` until it expires and is implemented with a `Duration` `GameplayEffect` ([`Cooldown GE`](#concepts-ge-cooldown)).
 
 Before a `GameplayAbility` calls `UGameplayAbility::Activate()`, it calls `UGameplayAbility::CanActivateAbility()`. This function checks if the owning `ASC` can afford the cost (`UGameplayAbility::CheckCost()`) and ensures that the `GameplayAbility` is not on cooldown (`UGameplayAbility::CheckCooldown()`).
@@ -2187,6 +2203,7 @@ See [`CostGE`](#concepts-ge-cost) and [`CooldownGE`](#concepts-ge-cooldown) for 
 
 <a name="concepts-ga-leveling"></a>
 #### 4.6.13 Leveling Up Abilities
+
 There are two common methods for leveling up an ability:
 
 | Level Up Method                            | Description                                                                                                                                                                                                      |
@@ -2200,6 +2217,7 @@ The main difference between the two methods is if you want active `GameplayAbili
 
 <a name="concepts-ga-sets"></a>
 #### 4.6.14 Ability Sets
+
 `GameplayAbilitySets` are convenience `UDataAsset` classes for holding input bindings and lists of startup `GameplayAbilities` for Characters with logic to grant the `GameplayAbilities`. Subclasses can also include extra logic or properties. Paragon had a `GameplayAbilitySet` per hero that included all of their given `GameplayAbilities`.
 
 I find this class to be unnecessary at least given what I've seen of it so far. The Sample Project handles all of the functionality of `GameplayAbilitySets` inside of the `GDCharacterBase` and its subclasses.
@@ -2208,6 +2226,7 @@ I find this class to be unnecessary at least given what I've seen of it so far. 
 
 <a name="concepts-ga-batching"></a>
 #### 4.6.15 Ability Batching
+
 Traditional `Gameplay Ability` lifecycle involves a minimum of two or three RPCs from the client to the server.
 
 1. `CallServerTryActivateAbility()`
@@ -2266,6 +2285,7 @@ GASShooter exposes a Blueprint node to allow batching abilities which the aforem
 
 <a name="concepts-ga-netsecuritypolicy"></a>
 #### 4.6.16 Net Security Policy
+
 A `GameplayAbility`'s `NetSecurityPolicy` determines where should an ability execute on the network. It provides protection from clients attempting to execute restricted abilities.
 
 | `NetSecurityPolicy`     | Description                                                                                                                                        |
@@ -2276,6 +2296,8 @@ A `GameplayAbility`'s `NetSecurityPolicy` determines where should an ability exe
 | `ServerOnly`            | Server controls both execution and termination of this ability. A client making any requests will be ignored.                                      |
 
 **[⬆ Back to Top](#table-of-contents)**
+
+===== 여기부터 ===== 
 
 <a name="concepts-at"></a>
 ### 4.7 Ability Tasks
