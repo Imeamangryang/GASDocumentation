@@ -42,7 +42,36 @@
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.4.4 [Attribute 초기화](#concepts-as-init)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.4.5 [PreAttributeChange()](#concepts-as-preattributechange)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.4.6 [PostGameplayEffectExecute()](#concepts-as-postgameplayeffectexecute)  
->    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.4.7 [OnAttributeAggregatorCreated()](#concepts-as-onattributeaggregatorcreated)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.4.7 [OnAttributeAggregatorCreated()](#concepts-as-onattributeaggregatorcreated)
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.1 [Gameplay Effect Definition](#concepts-ge-definition)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.2 [Applying Gameplay Effects](#concepts-ge-applying)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.3 [Removing Gameplay Effects](#concepts-ga-removing)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.4 [Gameplay Effect Modifiers](#concepts-ge-mods)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.4.1 [Multiply and Divide Modifiers](#concepts-ge-mods-multiplydivide)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.4.2 [Gameplay Tags on Modifiers](#concepts-ge-mods-gameplaytags)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.5 [Stacking Gameplay Effects](#concepts-ge-stacking)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.6 [Granted Abilities](#concepts-ge-ga)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.7 [Gameplay Effect Tags](#concepts-ge-tags)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.8 [Immunity](#concepts-ge-immunity)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.9 [Gameplay Effect Spec](#concepts-ge-spec)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.9.1 [SetByCallers](#concepts-ge-spec-setbycaller)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.10 [Gameplay Effect Context](#concepts-ge-context)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.11 [Modifier Magnitude Calculation](#concepts-ge-mmc)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12 [Gameplay Effect Execution Calculation](#concepts-ge-ec)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12.1 [Sending Data to Execution Calculations](#concepts-ge-ec-senddata)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12.1.1 [SetByCaller](#concepts-ge-ec-senddata-setbycaller)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12.1.2 [Backing Data Attribute Calculation Modifier](#concepts-ge-ec-senddata-backingdataattribute)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12.1.3 [Backing Data Temporary Variable Calculation Modifier](#concepts-ge-ec-senddata-backingdatatempvariable)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.12.1.4 [Gameplay Effect Context](#concepts-ge-ec-senddata-effectcontext)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.13 [Custom Application Requirement](#concepts-ge-car)
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.14 [Cost Gameplay Effect](#concepts-ge-cost)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.15 [Cooldown Gameplay Effect](#concepts-ge-cooldown)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.15.1 [Get the Cooldown Gameplay Effect's Remaining Time](#concepts-ge-cooldown-tr)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.15.2 [Listening for Cooldown Begin and End](#concepts-ge-cooldown-listen)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.15.3 [Predicting Cooldowns](#concepts-ge-cooldown-prediction)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.16 [Changing Active Gameplay Effect Duration](#concepts-ge-duration)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.17 [Creating Dynamic Gameplay Effects at Runtime](#concepts-ge-dynamic)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.5.18 [Gameplay Effect Containers](#concepts-ge-containers)  
 
 <a name="intro"></a>
 ## 1. GameplayAbilitySystem Plugin의 소개
@@ -1083,6 +1112,618 @@ source ASC와 target ASC의 태그는 `GameplayEffect`에 의해 캡처됩니다
 * `GameplayEffect`가 부여하는 `GameplayTag` 외에 Target에게 `GameplayEffectSpec`가 추가로 부여되는 `DynamicGrantedTag`.
 * `GameplayEffect`가 가지는 `AssetTag` 외에 `GameplayEffectSpec`가 추가로 가지는 `DynamicAssetTag`.
 * `SetByCaller` `TMaps`.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-spec-setbycaller"></a>
+##### 4.5.9.1 SetByCallers
+
+`SetByCaller`는 `GameplayEffectSpec`이 GameplayTag 또는 FName에 연결된 float 값을 운반하도록 허용합니다. 이 값들은 각각의 `TMap`에 저장됩니다:
+
+- TMap<FGameplayTag, float>
+- TMap<FName, float>
+
+SetByCaller는 `GameplayEffect`의 `Modifier`로 사용되거나, 일반적으로 float 값을 다른 시스템으로 전달하는 수단으로 사용될 수 있습니다. 보통 Ability 내부에서 생성된 수치 데이터를 [`GameplayEffectExecutionCalculations`](#concepts-ge-ec)나 [`ModifierMagnitudeCalculations`](#concepts-ge-mmc)에 전달할 때 `SetByCaller`가 사용됩니다.
+
+| `SetByCaller` 사용처 | 사용 방법                                                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Modifiers`       | `GameplayEffect` 클래스에서 미리 정의되어야 하며, `GameplayTag` 버전만 사용할 수 있습니다. 만약 `GameplayEffectSpec`이 일치하는 태그와 float 값 쌍을 가지지 않는다면, 게임은 런타임 오류를 발생시키고 해당 `GameplayEffectSpec`의 값은 0이 반환됩니다. 이는 나눗셈(Divide) 연산 시 잠재적 문제를 일으킬 수 있습니다. 자세한 내용은 [`Modifiers`](#concepts-ge-mods)를 참고하세요.|
+| 기타      | 미리 정의될 필요가 없으며, 어디서든 사용할 수 있습니다. `GameplayEffectSpec`에 존재하지 않는 `SetByCaller` 값을 읽으면 개발자가 정의한 기본 값(Default Value)을 반환할 수 있으며, 경고 메시지를 선택적으로 출력할 수도 있습니다.     |
+
+블루프린트에서 `SetByCaller` 값을 할당하려면, 필요한 버전에 대한 블루프린트 노드(`GameplayTag` 또는 `FName`)를 사용합니다.
+
+![Assigning SetByCaller](https://github.com/tranek/GASDocumentation/raw/master/Images/setbycaller.png)
+
+블루프린트에서 `SetByCaller` 값을 읽으려면, Blueprint Library에 커스텀 노드를 만들어야 합니다.
+
+C++에서 `SetByCaller` 값을 할당하려면 필요한 함수 버전(`GameplayTag` 또는 `FName`)을 사용하세요:
+
+```c++
+float GetSetByCallerMagnitude(FName DataName, bool WarnIfNotFound = true, float DefaultIfNotFound = 0.f) const;
+```
+```c++
+float GetSetByCallerMagnitude(FGameplayTag DataTag, bool WarnIfNotFound = true, float DefaultIfNotFound = 0.f) const;
+```
+`FName` 버전보다 `GameplayTag` 버전을 사용하는 것이 좋습니다. 이렇게 하면 블루프린트에서 철자 오류를 방지할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-context"></a>
+#### 4.5.10 Gameplay Effect Context
+
+[`GameplayEffectContext`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/FGameplayEffectContext/index.html) 구조체는 `GameplayEffectSpec`의 시작자(Instigator)와 [`TargetData`](#concepts-targeting-data)에 대한 정보를 보유합니다. 해당 구조체는 또한 [`ModifierMagnitudeCalculations`](#concepts-ge-mmc), [`GameplayEffectExecutionCalculations`](#concepts-ge-ec), [`AttributeSets`](#concepts-as), [`GameplayCues`](#concepts-gc) 등과 같은 다양한 장소에서 임의의 데이터를 전달할 때 서브클래싱하여 사용하는 데 유용합니다.
+
+
+`GameplayEffectContext`를 서브클래싱하려면 다음 단계를 따르세요:
+
+1. `FGameplayEffectContext` 서브클래스 생성
+1. `FGameplayEffectContext::GetScriptStruct()` 재정의
+1. `FGameplayEffectContext::Duplicate()` 재정의
+1. 새로운 데이터가 리플리케이트되어야 하는 경우 `FGameplayEffectContext::NetSerialize()` 재정의
+1. 부모 구조체인 `FGameplayEffectContext`가 사용하는 것처럼 서브클래스를 위해 `TStructOpsTypeTrait` 구현
+1. [`AbilitySystemGlobals`](#concepts-asg) 클래스에서 `AllocGameplayEffectContext()`를 재정의하여 서브클래스의 새 객체를 반환하도록 설정.
+
+[GASShooter](https://github.com/tranek/GASShooter)는 서브클래싱된 `GameplayEffectContext`를 사용하여 `TargetData`를 추가하고, 이를 `GameplayCue`에서 접근할 수 있도록 합니다. 특히 산탄총과 같이 여러 적을 한 번에 맞힐 수 있는 경우에 유용합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-mmc"></a>
+#### 4.5.11 Modifier Magnitude Calculation
+
+[`ModifierMagnitudeCalculations`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/UGameplayModMagnitudeCalculation/index.html) (`ModMagCalc` 또는 `MMC`)는 `GameplayEffect`에서 [`Modifiers`](#concepts-ge-mods)로 사용되는 강력한 클래스입니다. 이들은 [`GameplayEffectExecutionCalculations`](#concepts-ge-ec)와 유사하게 작동하지만, 기능이 덜 강력하고 가장 중요한 점은 [predicted](#concepts-p)이 가능하다는 것입니다. 이들의 주요 목적은 `CalculateBaseMagnitude_Implementation()`에서 float 값을 반환하는 것입니다. 이 함수를 Blueprint와 C++에서 서브클래싱하고 재정의할 수 있습니다.
+
+`MMC`는 `Instant`, `Duration`, `Infinite`, `Periodic` 등 어떤 종류의 `GameplayEffect`에도 사용할 수 있습니다.
+
+`MMC`의 강점은 `GameplayEffectSpec`에 대한 전체 액세스를 통해 `Source` 또는 `Target`의 여러 `Attribute` 값을 캡처할 수 있다는 점입니다. 이로 인해 `GameplayTag`와 `SetByCaller`를 읽을 수 있습니다. `Attribute`는 스냅샷 방식으로 캡처할 수 있으며, 그렇지 않은 경우에도 캡처할 수 있습니다. 스냅샷된 `Attribute`는 `GameplayEffectSpec`이 생성될 때 캡처되고, 비스냅샷 `Attribute`는 `GameplayEffectSpec`이 적용될 때 캡처되며, `Infinite`와 `Duration` 효과에 대해 `Attribute`가 변경될 때 자동으로 업데이트됩니다. `Attribute` 캡처는 해당 `Attribute`의 `CurrentValue`를 ASC의 기존 모드에서 다시 계산합니다.
+
+> **note** 이 재계산은 `AbilitySet`의 [`PreAttributeChange()`](#concepts-as-preattributechange)를 실행하지 않으므로, 모든 클램핑은 여기에서 다시 수행해야 합니다.
+
+| Snapshot | Source or Target | `GameplayEffectSpec`의 캡처 시점 |  `Infinite` 또는 `Duration` `GE`의 `Attribute`가 변경될 경우 자동 업데이트 여부. |
+| -------- | ---------------- | -------------------------------- | -------------------------------------------------------------------------------- |
+| Yes      | Source           | Creation                         | No                                                                               |
+| Yes      | Target           | Application                      | No                                                                               |
+| No       | Source           | Application                      | Yes                                                                              |
+| No       | Target           | Application                      | Yes                                                                              |
+
+`MMC`에서 나온 float 값은 `GameplayEffect`의 `Modifier`에서 계수(coefficient)와 전후 계수 추가에 의해 더 수정될 수 있습니다.`
+
+예시로, 타겟의 mana 속성을 캡처하여 독 효과로부터 이를 감소시키는 `MMC`가 있을 수 있습니다. 해당 감소량은 타겟이 가진 mana 양과 타겟이 가지고 있을 수 있는 태그에 따라 달라집니다.
+
+```c++
+UPAMMC_PoisonMana::UPAMMC_PoisonMana()
+{
+
+	//ManaDef defined in header FGameplayEffectAttributeCaptureDefinition ManaDef;
+	ManaDef.AttributeToCapture = UPAAttributeSetBase::GetManaAttribute();
+	ManaDef.AttributeSource = EGameplayEffectAttributeCaptureSource::Target;
+	ManaDef.bSnapshot = false;
+
+	//MaxManaDef defined in header FGameplayEffectAttributeCaptureDefinition MaxManaDef;
+	MaxManaDef.AttributeToCapture = UPAAttributeSetBase::GetMaxManaAttribute();
+	MaxManaDef.AttributeSource = EGameplayEffectAttributeCaptureSource::Target;
+	MaxManaDef.bSnapshot = false;
+
+	RelevantAttributesToCapture.Add(ManaDef);
+	RelevantAttributesToCapture.Add(MaxManaDef);
+}
+
+float UPAMMC_PoisonMana::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec & Spec) const
+{
+	// Gather the tags from the source and target as that can affect which buffs should be used
+	const FGameplayTagContainer* SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
+	const FGameplayTagContainer* TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
+
+	FAggregatorEvaluateParameters EvaluationParameters;
+	EvaluationParameters.SourceTags = SourceTags;
+	EvaluationParameters.TargetTags = TargetTags;
+
+	float Mana = 0.f;
+	GetCapturedAttributeMagnitude(ManaDef, Spec, EvaluationParameters, Mana);
+	Mana = FMath::Max<float>(Mana, 0.0f);
+
+	float MaxMana = 0.f;
+	GetCapturedAttributeMagnitude(MaxManaDef, Spec, EvaluationParameters, MaxMana);
+	MaxMana = FMath::Max<float>(MaxMana, 1.0f); // Avoid divide by zero
+
+	float Reduction = -20.0f;
+	if (Mana / MaxMana > 0.5f)
+	{
+		// Double the effect if the target has more than half their mana
+		Reduction *= 2;
+	}
+	
+	if (TargetTags->HasTagExact(FGameplayTag::RequestGameplayTag(FName("Status.WeakToPoisonMana"))))
+	{
+		// Double the effect if the target is weak to PoisonMana
+		Reduction *= 2;
+	}
+	
+	return Reduction;
+}
+```
+
+`MMC` 의 생성자에서 `RelevantAttributesToCapture` 에 `FGameplayEffectAttributeCaptureDefinition` 을 추가하지 않고 `Attributes` 캡처를 시도하면 캡처 도중 스펙이 없다는 오류가 발생합니다. `Attributes`을 캡처할 필요가 없는 경우 `RelevantAttributesToCapture`에 아무 것도 추가할 필요가 없습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-ec"></a>
+#### 4.5.12 Gameplay Effect Execution Calculation
+
+[`GameplayEffectExecutionCalculations`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/UGameplayEffectExecutionCalculat-/index.html) (`ExecutionCalculation`, `Execution`(해당 용어는 플러그인의 소스 코드에서 자주 보임), 또는 `ExecCalc`)은 `GameplayEffect`가 `ASC`에 변화를 주는 가장 강력한 방법입니다. [`ModifierMagnitudeCalculations`](#concepts-ge-mmc)와 유사하게, `ExecutionCalculation`도 `Attribute`를 캡처할 수 있으며, 이를 선택적으로 스냅샷 방식으로 캡처할 수 있습니다. `MMC`와는 달리, ExecutionCalculation은 하나 이상의 `Attribute`를 변경할 수 있으며, 본질적으로 프로그래머가 원하는 모든 작업을 수행할 수 있습니다. 그러나 이 강력한 기능과 유연성의 단점은 [predicted](#concepts-p)이 불가능하고 C++로 구현해야 한다는 것입니다.
+
+`ExecutionCalculation`은 `Instant`와 `Periodic` `GameplayEffect`에서만 사용 가능합니다. Execute라는 단어가 포함된 것은 일반적으로 이 두 종류의 `GameplayEffect`를 의미합니다.
+
+스냅샷은 `GameplayEffectSpec`이 생성될 때 `Attribute`를 캡처하며, 비스냅샷은 `GameplayEffectSpec`이 적용될 때 `Attribute`를 캡처합니다. `Attribute` 캡처는 해당 Attribute의 `CurrentValue`를 `ASC`의 기존 모드에서 다시 계산합니다. 
+
+> **note** 이 재계산은 `AbilitySet`의 [`PreAttributeChange()`](#concepts-as-preattributechange)를 실행하지 않으므로, 모든 클램핑은 여기에서 다시 수행해야 합니다.
+
+| Snapshot | Source or Target | `GameplayEffectSpec` 캡처 시점 |
+| -------- | ---------------- | -------------------------------- |
+| Yes      | Source           | Creation                         |
+| Yes      | Target           | Application                      |
+| No       | Source           | Application                      |
+| No       | Target           | Application                      |
+
+`Attribute` 캡처를 설정하려면, 에픽 게임즈의 ActionRPG Sample Project에서 설정한 패턴을 따르며, `Attributes`를 캡처하는 방법을 정의하는 구조체를 정의하고, 구조체의 생성자에서 해당 구조체의 복사본을 생성해야 합니다. `ExecCalc`마다 이런 구조체가 필요합니다. 
+
+> **Note:** 구조체 이름은 고유해야 합니다. 동일한 이름을 사용하면 A`ttribute` 캡처에서 잘못된 동작이 발생할 수 있습니다(주로 잘못된 `Attribute`의 값이 캡처됨).
+
+`Local Predicted`, `Server Only`, `Server Initiated` [`GameplayAbilities`](#concepts-ga)의 경우, `ExecCalc`는 서버에서만 호출됩니다.
+
+`Source`와 `Target`에서 여러 Attribute를 읽어 복잡한 공식에 따라 피해를 계산하는 것이 `ExecCalc`의 가장 일반적인 예입니다. 포함된 Sample Project에는 `GameplayEffectSpec`의 [`SetByCaller`](#concepts-ge-spec-setbycaller)에서 피해 값을 읽고, `Target`에서 캡처된 방어구 `Attribute`를 기준으로 그 값을 완화하는 간단한 `ExecCalc`가 포함되어 있습니다. 이 예시는 `GDDamageExecCalculation.cpp/.h`에서 확인할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-ec-senddata"></a>
+##### 4.5.12.1 Sending Data to Execution Calculations
+
+`ExecutionCalculation`에 `Attribute`를 캡처하는 것 외에도 데이터를 전달하는 몇 가지 방법이 있습니다.
+
+<a name="concepts-ge-ec-senddata-setbycaller"></a>
+###### 4.5.12.1.1 SetByCaller
+
+[`GameplayEffectSpec`에 설정된 모든 `SetByCaller`](#concepts-ge-spec-setbycaller)값은 `ExecutionCalculation`에서 직접 읽을 수 있습니다.
+
+```c++
+const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
+float Damage = FMath::Max<float>(Spec.GetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), false, -1.0f), 0.0f);
+```
+
+<a name="concepts-ge-ec-senddata-backingdataattribute"></a>
+###### 4.5.12.1.2 Backing Data Attribute Calculation Modifier
+
+값을 `GameplayEffect`에 하드코딩하려면, 캡처된 `Attribute` 중 하나를 백업 데이터로 사용하는 `CalculationModifier`를 사용하여 값을 전달할 수 있습니다.
+
+아래의 스크린샷 예제에서는 캡처된 Damage `Attribute`에 50을 추가하고 있습니다. 또한, 값을 `Override`로 설정하여 하드코딩된 값만 사용할 수도 있습니다.
+
+![Backing Data Attribute Calculation Modifier](https://github.com/tranek/GASDocumentation/raw/master/Images/calculationmodifierbackingdataattribute.png)
+
+
+`ExecutionCalculation`은 `Attribute`를 캡처할 때 이 값을 읽습니다.
+
+```c++
+float Damage = 0.0f;
+// ExecutionCalculation에서 CalculationModifier로 설정된 옵션성 피해 값을 GameplayEffect의 Damage GE에 캡처합니다.
+ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().DamageDef, EvaluationParameters, Damage);
+```
+
+<a name="concepts-ge-ec-senddata-effectcontext"></a>
+###### 4.5.12.1.4 Gameplay Effect Context
+
+`ExecutionCalculation`으로 데이터를 보내려면, [`GameplayEffectContext` on the `GameplayEffectSpec`](#concepts-ge-context)를 커스텀하여 전달할 수 있습니다.
+
+`ExecutionCalculation`에서 `FGameplayEffectCustomExecutionParameter`를 통해 `EffectContext`에 접근할 수 있습니다.
+
+```c++
+const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
+FGSGameplayEffectContext* ContextHandle = static_cast<FGSGameplayEffectContext*>(Spec.GetContext().Get());
+```
+
+`GameplayEffectSpec` 또는 `EffectContext`의 내용을 변경해야 하는 경우:
+
+```c++
+FGameplayEffectSpec* MutableSpec = ExecutionParams.GetOwningSpecForPreExecuteMod();
+FGSGameplayEffectContext* ContextHandle = static_cast<FGSGameplayEffectContext*>(MutableSpec->GetContext().Get());
+```
+
+`ExecutionCalculation`에서 `GameplayEffectSpec`을 수정할 때는 주의해야 합니다.
+`GetOwningSpecForPreExecuteMod()`에 대한 주석을 참고하십시오.
+
+```c++
+/** Const 접근이 아닙니다. 특히 Attribute 캡처 후 Spec을 수정할 때 주의하세요. */
+FGameplayEffectSpec* GetOwningSpecForPreExecuteMod() const;
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-car"></a>
+#### 4.5.13 Custom Application Requirement
+
+[`CustomApplicationRequirement`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/UGameplayEffectCustomApplication-/index.html)(`CAR`) 클래스는 `GameplayEffect`가 적용될 수 있는지에 대한 고급 제어를 디자이너에게 제공합니다. 이는 `GameplayEffect`의 단순한 `GameplayTag` 검사보다 더 복잡한 조건을 설정할 수 있게 해줍니다. CAR은 `CanApplyGameplayEffect()`를 오버라이드하여 블루프린트에서 구현할 수 있으며, C++에서는 `CanApplyGameplayEffect_Implementation()`을 오버라이드하여 구현할 수 있습니다.
+
+`CAR`의 사용 예시:
+* `Target`이 특정 `Attribute`의 값을 일정 수준 이상 가지고 있어야 하는 경우
+* `Target`이 특정 `GameplayEffect`의 스택을 일정 수 이상 가지고 있어야 하는 경우
+
+`CAR`은 더 많은 고급 기능을 수행할 수 있습니다. 예를 들어, 해당 대상에게 이미 `GameplayEffect`의 인스턴스가 적용되어 있는지 확인하고, 새 인스턴스를 적용하는 대신 기존 인스턴스의 [changing the duration](#concepts-ge-duration)할 수 있습니다(이 경우 `CanApplyGameplayEffect()`에서 false를 반환).
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-cost"></a>
+#### 4.5.14 Cost Gameplay Effect
+
+[`GameplayAbilities`](#concepts-ga)에는 선택적으로 Ability의 Cost(비용)로 사용할 수 있도록 설계된 `GameplayEffect`가 존재합니다. Cost란, `AbilitySystemComponent` (ASC)가 `GameplayAbility`를 활성화하기 위해 필요한 `Attribute`의 양을 의미합니다. 만약 `GameplayAbilit`y가 `Cost`에 해당하는 `GameplayEffect`를 감당할 수 없다면 활성화되지 않습니다.
+
+해당 `Cost GameplayEffect`는 `Instant` 타입이어야 하며, 하나 이상의 `Modifier`를 통해 `Attribute`에서 값을 차감합니다. 기본적으로 `Cost GameplayEffect`는 예측(Prediction)을 지원해야 하므로 `ExecutionCalculation`을 사용하지 않는 것이 좋습니다. 복잡한 Cost 계산이 필요하다면 `MMC`(GameplayModMagnitudeCalculation)를 사용하는 것이 허용되며 권장됩니다.
+
+처음 시작할 때는 대부분 `GameplayAbility`마다 고유한 `Cost GameplayEffect`를 설정하게 될 것입니다. 하지만 더 고급 기법으로는 여러 개의 `GameplayAbility`에서 하나의` Cost GameplayEffect`를 재사용할 수 있습니다. 이때는 `Cost` 값이 각 `GameplayAbility`에 정의되어야 하며, 생성된 `GameplayEffectSpec`에 `GameplayAbility`별 데이터를 추가로 설정합니다. **이 방법은 인스턴스화된(`Instanced`) GameplayAbility에서만 작동합니다.**
+
+`Cost GameplayEffect`를 재사용하는 두 가지 방법:
+
+1. `MMC` 사용하기 (가장 쉬운 방법)
+[`MMC`](#concepts-ge-mmc)를 만들고, `GameplayEffectSpec`에서 `GameplayAbility` 인스턴스로부터 `Cost` 값을 가져옵니다.
+
+```c++
+float UPGMMC_HeroAbilityCost::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec & Spec) const
+{
+	const UPGGameplayAbility* Ability = Cast<UPGGameplayAbility>(Spec.GetContext().GetAbilityInstance_NotReplicated());
+
+	if (!Ability)
+	{
+		return 0.0f;
+	}
+
+	return Ability->Cost.GetValueAtLevel(Ability->GetAbilityLevel());
+}
+```
+이 예제에서 Cost 값은 `GameplayAbility` 자식 클래스에 추가된 `FScalableFloat` 타입의 변수입니다.
+
+```c++
+UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Cost")
+FScalableFloat Cost;
+```
+
+![Cost GE With MMC](https://github.com/tranek/GASDocumentation/raw/master/Images/costmmc.png)
+
+2. **`UGameplayAbility::GetCostGameplayEffect()` 오버라이드하기**
+이 함수를 오버라이드하면 GameplayAbility의 Cost 값을 기반으로 [GameplayEffect를 런타임](#concepts-ge-dynamic)에 생성할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-cooldown"></a>
+#### 4.5.15 Cooldown Gameplay Effect
+
+[`GameplayAbilities`](#concepts-ga)에는 Cooldown(쿨타임) 용도로 사용할 수 있도록 설계된 `GameplayEffect`가 있습니다. Cooldown은 `GameplayAbility`를 활성화한 후 다시 사용할 수 있을 때까지의 시간을 결정합니다. 만약 `GameplayAbility`가 아직 Cooldown 상태라면 활성화할 수 없습니다. 이 `Cooldown GameplayEffect`는 `Duration` 타입이어야 하며 `Modifier`가 없어야 합니다. 또한 `GameplayEffect`의 `GrantedTag`에 `GameplayAbility`별로 고유한 `GameplayTag(“Cooldown Tag”)`를 할당해야 합니다. 만약 게임에 슬롯 개념이 존재하고, 슬롯 간에 Cooldown을 공유한다면 슬롯당 고유한 GameplayTag를 사용할 수도 있습니다.
+`GameplayAbility`는 실제로 `Cooldown Tag`의 존재 여부를 확인하지, `Cooldown GameplayEffect` 자체를 확인하지는 않습니다. 기본적으로 `Cooldown GameplayEffect`는 예측을 지원해야 하므로 `ExecutionCalculation`를 사용하지 않는 것이 좋습니다. 대신, 복잡한 Cooldown 계산에는 `MMC`를 사용하는 것이 허용되며 권장됩니다.
+
+처음에는 `GameplayAbility`마다 고유한 `Cooldown GameplayEffect`를 설정하게 됩니다. 하지만 더 고급 기법으로는 여러 개의 `GameplayAbility`에서 하나의 `Cooldown GameplayEffect`를 재사용할 수 있습니다. 이 경우 Cooldown 시간과 `Cooldown Tag`는 각 `GameplayAbility`에서 정의해야 하며, 생성된 `GameplayEffectSpec`에 해당 데이터를 동적으로 설정합니다. **이 방법은 인스턴스화된(`Instanced`)GameplayAbility에서만 작동합니다.**
+
+`Cooldown GameplayEffect`를 재사용하는 두 가지 방법:
+
+1. **[`SetByCaller`](#concepts-ge-spec-setbycaller)를 활용한 방법**(가장 쉬운 방법)
+
+공유 `Cooldown GameplayEffect`(GE)의 Duration을 `GameplayTag`와 함께 `SetByCaller`로 설정합니다. `GameplayAbility` 서브클래스에서 다음을 정의합니다. `GameplayAbility` 서브클래스에 Duration에 대한 float /` FScalableFloat`, 고유 Cooldown 태그에 대한 `FGameplayTagContainer`, `Cooldown Tag`와 `Cooldown GE`의 태그를 합친 반환 포인터로 사용할 임시 `FGameplayTagContainer`를 정의합니다.
+
+```c++
+UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Cooldown")
+FScalableFloat CooldownDuration;
+
+UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Cooldown")
+FGameplayTagContainer CooldownTags;
+
+// GetCooldownTags()에서 반환할 포인터를 사용할 임시 컨테이너입니다.
+// 이것은CooldownTag와 Cooldown GE의 CoolDown 태그를 합친 값입니다.
+UPROPERTY(Transient)
+FGameplayTagContainer TempCooldownTags;
+```
+
+그런 다음, `UGameplayAbility::GetCooldownTags()`를 오버라이드하여 `Cooldown Tag`와 기존 `cooldown GameplayEffect`의 Tag를 합친 값을 반환하도록 합니다.
+
+```c++
+const FGameplayTagContainer * UPGGameplayAbility::GetCooldownTags() const
+{
+	FGameplayTagContainer* MutableTags = const_cast<FGameplayTagContainer*>(&TempCooldownTags);
+	MutableTags->Reset(); // MutableTags는 CDO의 TempCooldownTags에 기록되므로, GameplayAbility의 Cooldown 태그가 변경될 경우(다른 슬롯으로 이동) 이를 지우기 위해 초기화.
+	const FGameplayTagContainer* ParentTags = Super::GetCooldownTags();
+	if (ParentTags)
+	{
+		MutableTags->AppendTags(*ParentTags);
+	}
+	MutableTags->AppendTags(CooldownTags);
+	return MutableTags;
+}
+```
+
+마지막으로, `UGameplayAbility::ApplyCooldown()`을 오버라이드하여 `Cooldown Tag`를 주입하고, Cooldown `GameplayEffectSpec`에 `SetByCaller`를 추가합니다.
+
+```c++
+void UPGGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo * ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	UGameplayEffect* CooldownGE = GetCooldownGameplayEffect();
+	if (CooldownGE)
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGE->GetClass(), GetAbilityLevel());
+		SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CooldownTags);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName(  OurSetByCallerTag  )), CooldownDuration.GetValueAtLevel(GetAbilityLevel()));
+		ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
+	}
+}
+```
+이 그림에서 Cooldown의 Duration `Modifier`는 `SetByCaller`로 설정되며, Data.Cooldown이라는 `data Tag`를 사용합니다. `Data.Cooldown`은 위 코드에서 `OurSetByCallerTag`에 해당합니다.
+
+![Cooldown GE with SetByCaller](https://github.com/tranek/GASDocumentation/raw/master/Images/cooldownsbc.png)
+
+2. **`MMC`를 활용한 방법**
+
+해당 방법은 위의 방법(`ApplyCooldown`)과 동일한 설정을 사용하지만,` Cooldown GE`의 지속 시간을 `SetByCaller`로 설정하는 대신, Duration을 `Custom Calculation Class`로 설정하고, 새로 만들 `MMC`를 가리키도록 합니다.
+
+```c++
+UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Cooldown")
+FScalableFloat CooldownDuration;
+
+UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Cooldown")
+FGameplayTagContainer CooldownTags;
+
+// GetCooldownTags()에서 반환할 포인터로 사용할 임시 컨테이너입니다.
+// CooldownTags와 Cooldown GE의 Cooldown 태그를 합친 값입니다.
+UPROPERTY(Transient)
+FGameplayTagContainer TempCooldownTags;
+```
+
+그런 다음, `UGameplayAbility::GetCooldownTags()`를 오버라이드하여 `Cooldown Tag`와 기존 `Cooldown GE`의 태그를 합친 값을 반환하도록 합니다.
+
+```c++
+const FGameplayTagContainer * UPGGameplayAbility::GetCooldownTags() const
+{
+	FGameplayTagContainer* MutableTags = const_cast<FGameplayTagContainer*>(&TempCooldownTags);
+	MutableTags->Reset(); // MutableTags writes to the TempCooldownTags on the CDO so clear it in case the ability cooldown tags change (moved to a different slot)
+	const FGameplayTagContainer* ParentTags = Super::GetCooldownTags();
+	if (ParentTags)
+	{
+		MutableTags->AppendTags(*ParentTags);
+	}
+	MutableTags->AppendTags(CooldownTags);
+	return MutableTags;
+}
+```
+
+마지막으로, `UGameplayAbility::ApplyCooldown()`을 오버라이드하여 `Cooldown Tag`를 Cooldown `GameplayEffectSpec`에 주입합니다.
+
+```c++
+void UPGGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo * ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	UGameplayEffect* CooldownGE = GetCooldownGameplayEffect();
+	if (CooldownGE)
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGE->GetClass(), GetAbilityLevel());
+		SpecHandle.Data.Get()->DynamicGrantedTags.AppendTags(CooldownTags);
+		ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, SpecHandle);
+	}
+}
+```
+
+```c++
+float UPGMMC_HeroAbilityCooldown::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec & Spec) const
+{
+	const UPGGameplayAbility* Ability = Cast<UPGGameplayAbility>(Spec.GetContext().GetAbilityInstance_NotReplicated());
+
+	if (!Ability)
+	{
+		return 0.0f;
+	}
+
+	return Ability->CooldownDuration.GetValueAtLevel(Ability->GetAbilityLevel());
+}
+```
+
+![Cooldown GE with MMC](https://github.com/tranek/GASDocumentation/raw/master/Images/cooldownmmc.png)
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-cooldown-tr"></a>
+##### 4.5.15.1 Cooldown GameplayEffect의 남은 시간 얻어내기
+
+```c++
+bool APGPlayerState::GetCooldownRemainingForTag(FGameplayTagContainer CooldownTags, float & TimeRemaining, float & CooldownDuration)
+{
+	if (AbilitySystemComponent && CooldownTags.Num() > 0)
+	{
+		TimeRemaining = 0.f;
+		CooldownDuration = 0.f;
+
+		FGameplayEffectQuery const Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(CooldownTags);
+		TArray< TPair<float, float> > DurationAndTimeRemaining = AbilitySystemComponent->GetActiveEffectsTimeRemainingAndDuration(Query);
+		if (DurationAndTimeRemaining.Num() > 0)
+		{
+			int32 BestIdx = 0;
+			float LongestTime = DurationAndTimeRemaining[0].Key;
+			for (int32 Idx = 1; Idx < DurationAndTimeRemaining.Num(); ++Idx)
+			{
+				if (DurationAndTimeRemaining[Idx].Key > LongestTime)
+				{
+					LongestTime = DurationAndTimeRemaining[Idx].Key;
+					BestIdx = Idx;
+				}
+			}
+
+			TimeRemaining = DurationAndTimeRemaining[BestIdx].Key;
+			CooldownDuration = DurationAndTimeRemaining[BestIdx].Value;
+
+			return true;
+		}
+	}
+
+	return false;
+}
+```
+
+> **Note**: 클라이언트에서 Cooldown의 남은 시간을 Query(조회)하려면 리플리케이트된 `GameplayEffect`를 수신할 수 있어야 합니다. 이는 `ASC`의 [replication mode](#concepts-asc-rm)에 따라 달라집니다.
+
+<a name="concepts-ge-cooldown-listen"></a>
+##### 4.5.15.2 Cooldown 시작 및 종료 청취(Listening)
+
+Cooldown이 시작되는 시점을 수신하려면, `AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf`에 바인딩하여 `Cooldown GE`가 적용될 때 응답하거나, `AbilitySystemComponent->RegisterGameplayTagEvent(CooldownTag, EGameplayTagEventType::NewOrRemoved)`에 바인딩하여 `Cooldown Tag`가 추가될 때 응답할 수 있습니다. `Cooldown GE`가 언제 추가되었는지 확인하는 것이 좋은데, `Cooldown GE`를 적용한 `GameplayEffectSpec`에도 접근할 수 있기 때문입니다. 이를 통해 `Cooldown GE`가 로컬에서 예측한 것인지 서버에서 수정한 것인지를 확인할 수 있습니다.
+
+Cooldown이 언제 끝나는지 수신하려면, `AbilitySystemComponent->OnAnyGameplayEffectRemovedDelegate()`에 바인딩하여 `Cooldown GE`가 제거되는 시점에 응답하거나, `AbilitySystemComponent->RegisterGameplayTagEvent(CooldownTag, EGameplayTagEventType::NewOrRemoved)`에 바인딩하여 `Cooldown Tag`가 제거되는 시점에 응답하면 됩니다. 서버의 수정된 `Cooldown GE`가 들어오면 로컬에서 예측한 Cooldown이 제거되어 Cooldown이 진행 중임에도 불구하고 `OnAnyGameplayEffectRemovedDelegate()`가 발동되므로 `Cooldown Tag`가 제거되는 시점을 잘 살펴볼 것을 권장합니다. 예측된 `Cooldown GE`를 제거하고 서버의 수정된 `Cooldown GE`를 적용하는 동안 `Cooldown Tag`는 변경되지 않습니다.
+
+> **Note:** 클라이언트에서 `GameplayEffect`가 추가되거나 제거되는 것을 듣기 위해서는 클라이언트가 리플리케이트된 `GameplayEffect`를 받을 수 있어야 합니다. 이는 `ASC`의 [replication mode](#concepts-asc-rm)에 따라 달라집니다.
+
+샘플 프로젝트에는 Cooldown이 시작되고 끝나는 것을 듣는 Costom Blueprint 노드가 포함되어 있습니다. HUD UMG Widget은 이를 사용하여 메테오의 Cooldown의 남은 시간을 업데이트합니다. 해당 `AsyncTask`는 `EndTask()`가 수동으로 호출될 때까지 계속 살아 있습니다. UMG Widget의 `Destruct` 이벤트에서 이를 처리합니다. [`AsyncTaskCooldownChanged.h/cpp`](Source/GASDocumentation/Private/Characters/Abilities/AsyncTaskCooldownChanged.cpp)를 참고하세요.
+
+![Listen for Cooldown Change BP Node](https://github.com/tranek/GASDocumentation/raw/master/Images/cooldownchange.png)
+
+<a name="concepts-ge-cooldown-prediction"></a>
+##### 4.5.15.3 Predicting Cooldowns
+
+현재 Cooldown을 실제로 예측할 수 없습니다. 로컬에서 예측된 `Cooldown GE`가 적용될 때 UI Cooldown 타이머를 시작할 수 있지만, `GameplayAbility`의 실제 Cooldown은 서버의 Cooldown의 남은 시간에 연결되어 있습니다. 플레이어의 지연 시간에 따라, 로컬에서 예측된 Cooldown이 만료되었을 수 있지만, `GameplayAbility`는 여전히 서버에서 Cooldown 중일 수 있으며, 이로 인해 서버의 Cooldown이 만료될 때까지 `GameplayAbility`를 즉시 재활성화할 수 없습니다.
+
+샘플 프로젝트에서는 로컬에서 예측된 Cooldown이 시작될 때 메테오 Ability의 UI 아이콘을 회색으로 처리하고, 서버에서 수정된 `Cooldown GE`가 들어오면 Cooldown 타이머를 시작하는 방식으로 이를 처리합니다.
+
+게임 플레이 결과로, 지연 시간이 높은 플레이어는 짧은 Cooldown 능력에 대해 낮은 발사 속도를 가지게 되어 지연 시간이 낮은 플레이어에 비해 불리한 상황에 처하게 됩니다. Fortnite는 이를 피하기 위해 무기들이 Cooldown `GameplayEffect`를 사용하지 않고 맞춤형 기록 방식을 사용합니다.
+
+진정한 예측된 Cooldown을 허용하는(플레이어가 로컬 Cooldown이 만료되었을 때 `GameplayAbility`를 활성화할 수 있지만 서버에서는 여전히 Cooldown 중인 상태) 것은 에픽 게임즈가 향후 [GAS의 다음 버전에서 구현하고자 하는 기능](#concepts-p-future)입니다.
+
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-duration"></a>
+#### 4.5.16 활성화된 GameplayEffect 지속 시간 변경
+
+`Cooldown GE` 또는 `Duration` `GameplayEffect`의 남은 시간을 변경하려면, `GameplayEffectSpec`의 `Duration`을 변경하고, `StartServerWorldTime`을 업데이트하고, `CachedStartServerWorldTime`을 업데이트하고, `StartWorldTime`을 업데이트한 다음 `CheckDuration()`으로 지속시간 검사를 다시 실행해야 합니다. 서버에서 이 작업을 수행하고 `FActiveGameplayEffect`를 더티로 표시하면 클라이언트에 변경사항이 리플리케이트됩니다.
+
+
+`Cooldown GE`나 다른 `Duration` `GameplayEffect`의 남은 시간을 변경하려면, `GameplayEffectSpec`의 `Duration`을 변경하고, `StartServerWorldTime`, `CachedStartServerWorldTime`, `StartWorldTime`을 업데이트한 후, `CheckDuration()`으로 Duration 검사를 다시 실행해야 합니다. 서버에서 이를 수행하고 `FActiveGameplayEffect`를 더티 마킹하면, 변경 사항이 클라이언트에 리플리케이트됩니다.
+
+> **Note:** 이것은 `const_cast`가 필요하며 에픽 게임즈가 의도한 Duration 변경 방식이 아닐 수도 있지만, 지금까지는 잘 작동하는 것 같습니다.
+
+```c++
+bool UPAAbilitySystemComponent::SetGameplayEffectDurationHandle(FActiveGameplayEffectHandle Handle, float NewDuration)
+{
+	if (!Handle.IsValid())
+	{
+		return false;
+	}
+
+	const FActiveGameplayEffect* ActiveGameplayEffect = GetActiveGameplayEffect(Handle);
+	if (!ActiveGameplayEffect)
+	{
+		return false;
+	}
+
+	FActiveGameplayEffect* AGE = const_cast<FActiveGameplayEffect*>(ActiveGameplayEffect);
+	if (NewDuration > 0)
+	{
+		AGE->Spec.Duration = NewDuration;
+	}
+	else
+	{
+		AGE->Spec.Duration = 0.01f;
+	}
+
+	AGE->StartServerWorldTime = ActiveGameplayEffects.GetServerWorldTime();
+	AGE->CachedStartServerWorldTime = AGE->StartServerWorldTime;
+	AGE->StartWorldTime = ActiveGameplayEffects.GetWorldTime();
+	ActiveGameplayEffects.MarkItemDirty(*AGE);
+	ActiveGameplayEffects.CheckDuration(Handle);
+
+	AGE->EventSet.OnTimeChanged.Broadcast(AGE->Handle, AGE->StartWorldTime, AGE->GetDuration());
+	OnGameplayEffectDurationChange(*AGE);
+
+	return true;
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-dynamic"></a>
+#### 4.5.17 런타임에서 GameplayEffect 동적 생성하기
+
+런타임에서 동적 `GameplayEffect`를 생성하는 것은 심화 주제입니다. 이 작업은 자주 할 필요는 없습니다.
+
+`Instant` `GameplayEffect`만 C++에서 런타임에 처음부터 생성할 수 있습니다. `Duration`과 `Infinite` `GameplayEffect`는 런타임에서 동적으로 생성할 수 없습니다. 왜냐하면, 이를 리플리케이트할 때 해당 `GameplayEffect` 클래스 정의를 찾게 되는데, 이는 존재하지 않기 때문입니다. 이 기능을 구현하려면, 대신 에디터에서 하던 것처럼 Archetype `GameplayEffect` 클래스를 만들고, 런타임에서 `GameplayEffectSpec `인스턴스를 필요한 대로 커스터마이즈하는 방식으로 접근해야 합니다.
+
+런타임에서 생성된 `Instant` `GameplayEffect`는 [local predicted](#concepts-p) `GameplayAbility`내에서 호출될 수 있습니다. 그러나 동적 생성이 부작용을 일으킬 수 있는지는 아직 불확실합니다.
+
+##### Examples
+
+샘플 프로젝트에서는 캐릭터가 치명적인 타격을 입혔을 때, 그 캐릭터를 처치한 플레이어에게 골드와 경험치를 보내기 위해 GameplayEffect를 생성합니다.
+
+```c++
+// 보상을 주기 위해 동적 Instant GameplayEffect를 생성
+UGameplayEffect* GEBounty = NewObject<UGameplayEffect>(GetTransientPackage(), FName(TEXT("Bounty")));
+GEBounty->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+int32 Idx = GEBounty->Modifiers.Num();
+GEBounty->Modifiers.SetNum(Idx + 2);
+
+FGameplayModifierInfo& InfoXP = GEBounty->Modifiers[Idx];
+InfoXP.ModifierMagnitude = FScalableFloat(GetXPBounty());
+InfoXP.ModifierOp = EGameplayModOp::Additive;
+InfoXP.Attribute = UGDAttributeSetBase::GetXPAttribute();
+
+FGameplayModifierInfo& InfoGold = GEBounty->Modifiers[Idx + 1];
+InfoGold.ModifierMagnitude = FScalableFloat(GetGoldBounty());
+InfoGold.ModifierOp = EGameplayModOp::Additive;
+InfoGold.Attribute = UGDAttributeSetBase::GetGoldAttribute();
+
+Source->ApplyGameplayEffectToSelf(GEBounty, 1.0f, Source->MakeEffectContext());
+```
+
+두 번째 예시는 로컬 예측` GameplayAbility` 내에서 생성된 런타임 `GameplayEffect`를 보여줍니다. 코드 내 주석을 참조하여 사용할 때 주의하세요!
+
+```c++
+UGameplayAbilityRuntimeGE::UGameplayAbilityRuntimeGE()
+{
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+}
+
+void UGameplayAbilityRuntimeGE::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
+{
+	if (HasAuthorityOrPredictionKey(ActorInfo, &ActivationInfo))
+	{
+		if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+		{
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		}
+
+		// 런타임 중 GE 생성.
+		UGameplayEffect* GameplayEffect = NewObject<UGameplayEffect>(GetTransientPackage(), TEXT("RuntimeInstantGE"));
+		GameplayEffect->DurationPolicy = EGameplayEffectDurationType::Instant; // 런타임 GE는 인스턴트만 작동합니다.
+
+		// 간단한 스케일러블 float Modifier를 추가하여 MyAttribute를 42로 덮어씁니다.
+        // 실제 애플리케이션에서는 TriggerEventData를 통해 전달된 정보를 소비합니다.
+		const int32 Idx = GameplayEffect->Modifiers.Num();
+		GameplayEffect->Modifiers.SetNum(Idx + 1);
+		FGameplayModifierInfo& ModifierInfo = GameplayEffect->Modifiers[Idx];
+		ModifierInfo.Attribute.SetUProperty(UMyAttributeSet::GetMyModifiedAttribute());
+		ModifierInfo.ModifierMagnitude = FScalableFloat(42.f);
+		ModifierInfo.ModifierOp = EGameplayModOp::Override;
+
+		// GE 적용.
+
+        // 여기서 GESpec을 생성하여 ASC가 GE 클래스 기본 객체에서 GESpec을 생성하는 동작을 피합니다.
+        // 동적 GE가 있을 때 기본 GameplayEffect 클래스로 GESpec을 생성하면 Modifier가 손실되기 때문에 이렇게 처리합니다. 
+        // 주의: 이 해킹이 문제가 될 수 있는지 불확실합니다!
+        // GESpec에서 GE가 UPROPERTY로 참조되므로 GE 객체가 GarbageCollector에 의해 수거되는 것을 방지합니다.
+		FGameplayEffectSpec* GESpec = new FGameplayEffectSpec(GameplayEffect, {}, 0.f); // new, handle 내에서 shared ptr로 수명이 관리되기 때문입니다.
+		ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, FGameplayEffectSpecHandle(GESpec));
+	}
+	EndAbility(Handle, ActorInfo, ActivationInfo, false, false);
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-ge-containers"></a>
+#### 4.5.18 Gameplay Effect Containers
+
+에픽 게임즈의 [Action RPG Sample Project](https://www.unrealengine.com/marketplace/ko-kr/product/action-rpg)는 `FGameplayEffectContainer`라는 구조체를 구현합니다. 이는 기본 GAS에는 없지만 `GameplayEffect`와 [`TargetData`](#concepts-targeting-data)를 담는 데 매우 유용합니다. 이 구조체는 `GameplayEffectSpec`를 생성하고 기본 값을 설정하는 등의 작업을 자동화합니다. `GameplayAbility`에서 `GameplayEffectContainer`를 생성하고 이를 발사된 투사체에 전달하는 것은 매우 쉽고 직관적입니다. 저는 포함된 샘플 프로젝트에서 `GameplayEffectContainer`를 구현하지 않았는데, 이는 기본 GAS에서 이를 사용하지 않고 작업하는 방법을 보여주기 위함입니다. 하지만 이 구조체를 프로젝트에 추가하는 것을 고려해보는 것이 좋습니다.
+
+`GameplayEffectContainer` 안의 `GESpec`에 접근하여 `SetByCaller`를 추가하는 등의 작업을 하려면, `FGameplayEffectContainer`를 분해하고 `GESpec`의 인덱스를 사용하여 `GESpec` 참조에 접근해야 합니다. 이를 위해서는 액세스하려는 `GESpec`의 인덱스를 미리 알아야 합니다.
+
+![SetByCaller with a GameplayEffectContainer](https://github.com/tranek/GASDocumentation/raw/master/Images/gecontainersetbycaller.png)
+
+`GameplayEffectContainer`는 효율적인 [targeting](#concepts-targeting-containers).을 위한 선택적인 수단도 포함하고 있습니다.
 
 **[⬆ 위로 가기](#table-of-contents)**
 
