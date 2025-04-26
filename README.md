@@ -95,7 +95,24 @@
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.6.13 [Ability 레벨업](#concepts-ga-leveling)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.6.14 [Ability Sets](#concepts-ga-sets)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.6.15 [Ability Batching](#concepts-ga-batching)  
->    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.6.16 [Net Security Policy](#concepts-ga-netsecuritypolicy)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.6.16 [Net Security Policy](#concepts-ga-netsecuritypolicy)   
+>    4.7 [Ability Tasks](#concepts-at)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.7.1 [Ability Task 정의](#concepts-at-definition)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.7.2 [Custom Ability Tasks](#concepts-at-definition)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.7.3 [Ability Tasks 사용](#concepts-at-using)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.7.4 [Root Motion Source Ability Tasks](#concepts-at-rms)  
+>    4.8 [Gameplay Cues](#concepts-gc)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.1 [Gameplay Cue 정의](#concepts-gc-definition)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.2 [Triggering Gameplay Cues](#concepts-gc-trigger)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.3 [Local Gameplay Cues](#concepts-gc-local)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.4 [Gameplay Cue Parameters](#concepts-gc-parameters)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.5 [Gameplay Cue Manager](#concepts-gc-manager)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.6 [GameplayCue가 발동되지 않도록 방지](#concepts-gc-prevention)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.7 [Gameplay Cue Batching(일괄 처리)](#concepts-gc-batching)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.7.1 [수동 RPC](#concepts-gc-batching-manualrpc)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.7.2 [하나의 GE에 여러 개의 GC](#concepts-gc-batching-gcsonge)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.8 [Gameplay Cue Events](#concepts-gc-events)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.9 [Gameplay Cue Reliability(신뢰성)](#concepts-gc-reliability)  
 
 <a name="intro"></a>
 ## 1. GameplayAbilitySystem Plugin의 소개
@@ -2300,3 +2317,318 @@ GASShooter는 배칭된 Ability를 트리거하는 로컬 전용 Ability에서 �
 
 **[⬆ 위로 가기](#table-of-contents)**
 
+<a name="concepts-at"></a>
+### 4.7 Ability Tasks
+
+<a name="concepts-at-definition"></a>
+### 4.7.1 Ability Task 정의
+
+`GameplayAbility`는 한 프레임에서만 실행됩니다. 이로 인해 유연성이 제한됩니다. 시간이 지남에 따라 발생하는 작업이나 특정 시점에 호출되는 델리게이트에 반응해야 하는 작업을 수행하기 위해 우리는 `AbilityTask`라는 지연 작업을 사용합니다. 
+
+GAS는 기본적으로 여러 종류의 `AbilityTask`를 제공합니다:
+* `RootMotionSource`로 캐릭터 이동을 위한 작업
+* 애니메이션 몽타주를 재생하는 작업
+* `Attribute` 변경에 반응하는 작업
+* `GameplayEffect` 변경에 반응하는 작업
+* 플레이어 입력에 반응하는 작업
+* 그 외의 작업들
+
+`UAbilityTask` 생성자는 게임 전역에서 동시에 실행할 수 있는 최대 1000개의 `AbilityTask`만을 허용합니다. 이는 수백 명의 캐릭터가 동시에 존재하는 게임(예: RTS 게임)에서 `GameplayAbility`를 설계할 때 유의해야 합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-at-definition"></a>
+### 4.7.2 커스텀 AbilityTask
+
+여러분은 종종 자신만의 커스텀 `AbilityTask`(C++)를 만들게 될 것입니다. 
+
+샘플 프로젝트에는 두 가지 커스텀 `AbilityTask`가 포함되어 있습니다:
+
+1. `PlayMontageAndWaitForEvent`: 기본 `PlayMontageAndWait`와 `WaitGameplayEvent` `AbilityTask`를 결합한 것입니다. 이 `AbilityTask`는 애니메이션 몽타주가 `AnimNotify에`서 발생한 GameplayEvent를 `GameplayAbility`로 다시 전달하도록 합니다. 애니메이션 몽타주 중 특정 시점에 행동을 트리거하는 데 사용합니다.
+1. `WaitReceiveDamage`: 해당 `AbilityTask`는 `OwnerActor`가 피해를 받을 때를 감지합니다. 패시브 갑옷 스택 능력은 영웅이 피해를 입을 때마다 갑옷 스택을 제거합니다.
+
+`AbilityTask`는 다음과 같은 구성 요소로 이루어집니다:
+* `AbilityTask`의 새 인스턴스를 생성하는 정적 함수
+* `AbilityTask`가 완료되었을 때 방송되는 델리게이트
+* 주요 작업을 시작하고 외부 델리게이트에 바인딩하는 `Activate()` 함수
+* 외부 델리게이트와의 바인딩을 해제하는 등 정리를 위한 `OnDestroy()` 함수
+* 바인딩된 외부 델리게이트에 대한 콜백 함수
+* 멤버 변수와 내부 헬퍼 함수들
+
+> **Note:** `AbilityTask`는 한 가지 유형의 출력 델리게이트만 선언할 수 있습니다. 매개변수 사용 여부에 관계없이 모든 출력 델리게이트는 이 유형이어야 합니다. 사용하지 않는 델리게이트 매개변수에는 기본값을 전달해야 합니다.
+
+`AbilityTask`는 해당 `GameplayAbility`를 실행하는 클라이언트나 서버에서만 실행됩니다. 하지만 `AbilityTask`는 `bSimulatedTask = true;`를 `AbilityTask` 생성자에 설정하고, `virtual void InitSimulatedTask(UGameplayTasksComponent& InGameplayTasksComponent);`를 오버라이드하며, 필요한 멤버 변수들을 리플리케이트되도록 설정하면 시뮬레이션 클라이언트에서 실행되도록 설정할 수 있습니다. 이는 모든 이동 변경 사항을 리플리케이트하는 대신 전체 이동 `AbilityTask`를 시뮬레이션하고자 하는 드문 상황에서 유용합니다. 모든 `RootMotionSource` 관련 `AbilityTask`가 이렇게 동작합니다. `AbilityTask_MoveToLocation.h/.cpp`를 예시로 참고할 수 있습니다.
+
+`AbilityTask`는 생성자에서 `bTickingTask = true;`를 설정하고 `virtual void TickTask(float DeltaTime);`를 오버라이드하면 `틱(Tick)`을 실행할 수 있습니다. 이는 프레임 간에 부드럽게 값을 보간(lerp)해야 할 때 유용합니다. `AbilityTask_MoveToLocation.h/.cpp`에서 예시를 확인할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-at-using"></a>
+### 4.7.3 AbilityTask 사용
+
+C++(`GDGA_FireGun.cpp`)에서 `AbilityTask`를 생성하고 활성화하려면 다음과 같이 합니다:
+
+```c++
+UGDAT_PlayMontageAndWaitForEvent* Task = UGDAT_PlayMontageAndWaitForEvent::PlayMontageAndWaitForEvent(this, NAME_None, MontageToPlay, FGameplayTagContainer(), 1.0f, NAME_None, false, 1.0f);
+Task->OnBlendOut.AddDynamic(this, &UGDGA_FireGun::OnCompleted);
+Task->OnCompleted.AddDynamic(this, &UGDGA_FireGun::OnCompleted);
+Task->OnInterrupted.AddDynamic(this, &UGDGA_FireGun::OnCancelled);
+Task->OnCancelled.AddDynamic(this, &UGDGA_FireGun::OnCancelled);
+Task->EventReceived.AddDynamic(this, &UGDGA_FireGun::EventReceived);
+Task->ReadyForActivation();
+```
+
+Blueprint에서는 `AbilityTask`에 대해 생성한 Blueprint 노드를 사용하면 됩니다. `ReadyForActivation()`을 호출할 필요가 없으며, 이는 `Engine/Source/Editor/GameplayTasksEditor/Private/K2Node_LatentGameplayTaskCall.cpp`에서 자동으로 호출됩니다. `K2Node_LatentGameplayTaskCall`은 또한 `AbilityTask` 클래스에 `BeginSpawningActor()`와 `FinishSpawningActor()`가 있으면 자동으로 호출합니다(예: `AbilityTask_WaitTargetData` 참조). 다시 한 번 강조하자면, `K2Node_LatentGameplayTaskCall`은 Blueprint에서만 자동으로 호출됩니다. C++에서는 `ReadyForActivation()`, `BeginSpawningActor()`, `FinishSpawningActor()`를 수동으로 호출해야 합니다.
+
+![Blueprint WaitTargetData AbilityTask](https://github.com/tranek/GASDocumentation/raw/master/Images/abilitytask.png)
+
+Blueprint에서 `AbilityTask`를 수동으로 취소하려면, `AbilityTask` 객체(`Async Task Proxy`)에서 `EndTask()`를 호출하거나 C++에서 동일하게 호출하면 됩니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-at-rms"></a>
+### 4.7.4 Root Motion Source Ability Tasks
+
+GAS에는 `CharacterMovementComponent`에 연결된 `Root Motion Source`를 사용하여 넉백, 복잡한 점프, 당기기, 돌진 등 시간 경과에 따라 `Character`를 움직일 수 있는 `AbilityTask`가 포함되어 있습니다.
+
+> **Note:** `RootMotionSource` `AbilityTask`의 예측은 엔진 버전 4.19 및 4.25 이상에서는 정상 작동합니다. 하지만 엔진 4.20~4.24 버전에서는 예측에 버그가 있어, 멀티플레이어에서 네트워크 수정이 필요하며 싱글 플레이에서는 완벽하게 작동합니다. 4.25의 [prediction fix](https://github.com/EpicGames/UnrealEngine/commit/94107438dd9f490e7b743f8e13da46927051bf33#diff-65f6196f9f28f560f95bd578e07e290c) 사항을 4.20-4.24 버전의 엔진에 적용하는 것도 가능합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc"></a>
+### 4.8 Gameplay Cues
+
+<a name="concepts-gc-definition"></a>
+#### 4.8.1 Gameplay Cue 정의
+
+`GameplayCue`(`GC`)는 게임플레이와 관련되지 않은 작업들을 실행하는데 사용됩니다. 예를 들어, 사운드 효과, 파티클 효과, 카메라 흔들기 등입니다. `GameplayCue`는 일반적으로 리플리케이트 되어 실행되며(명시적으로 로컬에서만 `실행`, `추가` 또는 `제거`되지 않는 한) 예측됩니다.
+
+`GameplayCue`는 **반드시 `GameplayCue`라는 부모** `GameplayTag`와 이벤트 유형(`Execute, Add, Remove`)을 함께 `ASC`를 통해 `GameplayCueManager`로 보내어 트리거됩니다. `GameplayCueNotify` 객체와 `IGameplayCueInterface`를 구현한 다른 액터들은 `GameplayCue`의 `GameplayTag(GameplayCueTag)`에 따라 이 이벤트를 구독할 수 있습니다.
+
+> **Note:** 다시 한 번 말씀드리자면, `GameplayCue`의 `GameplayTag`는 반드시 `GameplayCue`라는 부모 `GameplayTag`로 시작해야 합니다. 예를 들어, 유효한 `GameplayCue GameplayTag`는 `GameplayCue.A.B.C`와 같이 생성됩니다.
+
+`GameplayCueNotify`에는 `Static`과 `Actor`라는 두 가지 종류가 있습니다. 각각은 서로 다른 이벤트에 응답하고, 다른 유형의 `GameplayEffect`가 이들을 트리거할 수 있습니다. 해당 이벤트를 오버라이드하여 필요한 로직을 구현하면 됩니다.
+
+| `GameplayCue` 클래스                                                                                                                  | 이벤트             | `GameplayEffect` 타입    | 설명                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`GameplayCueNotify_Static`](https://docs.unrealengine.com/en-US/API/Plugins/GameplayAbilities/UGameplayCueNotify_Static/index.html) | `Execute`         | `Instant` or `Periodic`  | Static `GameplayCueNotify`는 `ClassDefaultObject`에서 작동하며(인스턴스가 없음을 의미) 타격 임팩트와 같은 일회성 효과에 적합합니다.                                                                                                                                                                                                                                                                                                                                                                        |
+| [`GameplayCueNotify_Actor`](https://docs.unrealengine.com/en-US/BlueprintAPI/GameplayCueNotify/index.html)                           | `Add` or `Remove` | `Duration` or `Infinite` | Actor `GameplayCueNotify`가 추가되면 새 인스턴스를 스폰합니다. 인스턴스화되어 있기 때문에 제거될 때까지 계속 동작을 할 수 있습니다. backing `Duration` 또는 `Infinite` GameplayEffect가 제거되거나 수동으로 remove를 호출하면 제거되는 사운드 및 파티클 이펙트를 루핑하는 데 좋습니다. 또한 동시에 추가할 수 있는 개수를 관리할 수 있는 옵션도 제공되므로 동일한 효과를 여러 번 적용할 때 사운드나 파티클이 한 번만 시작되도록 할 수 있습니다. |
+
+`GameplayCueNotify`는 기술적으로 모든 이벤트에 응답할 수 있지만 일반적으로 위 방식을 사용합니다.
+
+> **Note:** `GameplayCueNotify_Actor`를 사용할 때, `Auto Destroy on Remove`를 체크하지 않으면 이후 동일한 `GameplayCueTag`에 대한 `Add` 호출이 작동하지 않을 수 있습니다.
+
+`Full Replication Mode`가 아닌 `ASC` [Replication Mode](#concepts-asc-rm)를 사용하는 경우, 서버 플레이어(리스닝 서버)에서 `Add` 및 `Remove` `GC` 이벤트가 두 번 발생합니다. 한 번은 `GE`를 적용할 때, 다른 한 번은 "최소" `NetMultiCast`에서 클라이언트로 전송할 때 발생합니다. 하지만 `WhileActive` 이벤트는 여전히 한 번만 발동합니다. 모든 이벤트는 클라이언트에서 한 번만 발생합니다.
+
+샘플 프로젝트에는 스턴과 스프린트 효과를 위한 `GameplayCueNotify_Actor`와 FireGun의 발사체 충돌을 위한 `GameplayCueNotify_Static`이 포함되어 있습니다. 이러한 `GC`는 `GE`를 통해 리플리케이트하는 대신 [로컬에서 트리거](#concepts-gc-local)하여 최적화할 수 있습니다. 샘플 프로젝트에서는 초보자에게 적합한 방법으로 이를 보여주기로 했습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-trigger"></a>
+#### 4.8.2 Triggering Gameplay Cues
+
+`GameplayEffect`가 성공적으로 적용되었을 때(태그나 면역에 의해 차단되지 않았을 때) `GameplayEffect` 내부에서 트리거되어야 하는 모든 `GameplayCue`의 `GameplayTag`를 채웁니다.
+
+![GameplayCue Triggered from a GameplayEffect](https://github.com/tranek/GASDocumentation/raw/master/Images/gcfromge.png)
+
+`UGameplayAbility`는 `GameplayCue`를 `Execute`, `Add` 또는 `Remove`하는 블루프린트 노드를 제공합니다.
+
+![GameplayCue Triggered from a GameplayAbility](https://github.com/tranek/GASDocumentation/raw/master/Images/gcfromga.png)
+
+C++에서는 `ASC`에서 직접 함수를 호출하거나 `ASC` 서브클래스에서 블루프린트로 노출할 수 있습니다:
+
+```c++
+/** GameplayCue는 독립적으로 올 수 있습니다. 이들은 EffectContext를 전달하여 히트 결과 등을 처리할 수 있습니다. */
+void ExecuteGameplayCue(const FGameplayTag GameplayCueTag, FGameplayEffectContextHandle EffectContext = FGameplayEffectContextHandle());
+void ExecuteGameplayCue(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+/** persistent GameplayCue를 추가합니다. */
+void AddGameplayCue(const FGameplayTag GameplayCueTag, FGameplayEffectContextHandle EffectContext = FGameplayEffectContextHandle());
+void AddGameplayCue(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+/** persistent GameplayCue를 제거합니다. */
+void RemoveGameplayCue(const FGameplayTag GameplayCueTag);
+	
+/** 자체적으로 추가된 GameplayCue를 제거합니다. 즉, GameplayEffect의 일부로 추가되지 않은 경우입니다. */
+void RemoveAllGameplayCues();
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-local"></a>
+#### 4.8.3 Local Gameplay Cues
+
+`GameplayAbility`와 `ASC`에서 `GameplayCue`를 노출하는 함수는 기본적으로 리플리케이트됩니다. 각 `GameplayCue` 이벤트는 멀티캐스트 RPC입니다. 이로 인해 많은 RPC 호출이 발생할 수 있습니다. GAS는 동일한 `GameplayCue` RPC가 네트워크 업데이트당 최대 두 번만 실행되도록 제한합니다. 이를 피하기 위해 가능한 경우 로컬 `GameplayCue`를 사용합니다. 로컬 `GameplayCue`는 개별 클라이언트에서만 `Execute`, `Add`, 또는 `Remove`가 실행됩니다.
+
+로컬 `GameplayCue`를 사용할 수 있는 시나리오:
+* 발사체 충돌
+* 근접 충돌 충돌
+* 애니메이션 몽타주에서 발동되는 `GameplayCue`
+
+로컬 `GameplayCue` 함수(`ASC` 서브클래스에 추가해야 할 함수들) 입니다:
+
+```c++
+UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+void ExecuteGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+void AddGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+void RemoveGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+```
+
+```c++
+void UPAAbilitySystemComponent::ExecuteGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters & GameplayCueParameters)
+{
+	UAbilitySystemGlobals::Get().GetGameplayCueManager()->HandleGameplayCue(GetOwner(), GameplayCueTag, EGameplayCueEvent::Type::Executed, GameplayCueParameters);
+}
+
+void UPAAbilitySystemComponent::AddGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters & GameplayCueParameters)
+{
+	UAbilitySystemGlobals::Get().GetGameplayCueManager()->HandleGameplayCue(GetOwner(), GameplayCueTag, EGameplayCueEvent::Type::OnActive, GameplayCueParameters);
+	UAbilitySystemGlobals::Get().GetGameplayCueManager()->HandleGameplayCue(GetOwner(), GameplayCueTag, EGameplayCueEvent::Type::WhileActive, GameplayCueParameters);
+}
+
+void UPAAbilitySystemComponent::RemoveGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters & GameplayCueParameters)
+{
+	UAbilitySystemGlobals::Get().GetGameplayCueManager()->HandleGameplayCue(GetOwner(), GameplayCueTag, EGameplayCueEvent::Type::Removed, GameplayCueParameters);
+}
+```
+
+만약 `GameplayCue`가 `로컬에서 추가`되었다면, `로컬에서 제거`되어야 합니다. 만약 `리플리케이트를 통해 추가`되었다면, `리플리케이트를 통해 제거`되어야 합니다.
+
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-parameters"></a>
+#### 4.8.4 Gameplay Cue Parameters
+
+`GameplayCue`는 `FGameplayCueParameters` 구조체를 받아 해당 `GameplayCue`에 대한 추가 정보를 전달합니다. 만약 `GameplayCue`가 `GameplayAbility`나 `ASC`의 함수에서 수동으로 트리거된다면, `GameplayCue`에 전달되는 `FGameplayCueParameters` 구조체를 수동으로 채워야 합니다. 만약 `GameplayCue`가 `GameplayEffect`에 의해 트리거된다면, 다음과 같은 변수들이 `FGameplayCueParameters` 구조체에 자동으로 채워집니다:
+
+* AggregatedSourceTags
+* AggregatedTargetTags
+* GameplayEffectLevel
+* AbilityLevel
+* [EffectContext](#concepts-ge-context)
+* Magnitude (만약 `GameplayEffect`에 `GameplayCue` tag container의 Magnitude를 위한 `Attribute`가 선택되어 있고, 그 `Attribute`에 영향을 미치는 해당 `Modifier`가 있는 경우)
+
+`FGameplayCueParameters` 구조체의 `SourceObject` 변수는 `GameplayCue`를 수동으로 트리거할 때 임의의 데이터를 `GameplayCue`로 전달하는 데 유용한 장소일 수 있습니다.
+
+> **Note:** `Instigator`와 같은 일부 변수는 이미 `EffectContext`에 존재할 수도 있습니다. `EffectContext`는 또한 `GameplayCue`를 월드에 어디에 스폰할지에 대한 `FHitResult`를 포함할 수 있습니다. `EffectContext` 를 서브클래싱하는 것은 `GameplayEffect`에 의해 트리거되는 `GameplayCue`에 더 많은 데이터를 전달하는 좋은 방법일 수 있습니다.
+
+자세한 내용은 `FGameplayCueParameters` 구조체를 채우는 [`UAbilitySystemGlobals`](#concepts-asg)의 3가지 함수들을 참조해주세요. 해당 함수들은 가상 함수이므로, 이를 오버라이드하여 더 많은 정보를 자동으로 채울 수 있습니다.
+
+```c++
+/** GameplayCue 파라미터 초기화 */
+virtual void InitGameplayCueParameters(FGameplayCueParameters& CueParameters, const FGameplayEffectSpecForRPC &Spec);
+virtual void InitGameplayCueParameters_GESpec(FGameplayCueParameters& CueParameters, const FGameplayEffectSpec &Spec);
+virtual void InitGameplayCueParameters(FGameplayCueParameters& CueParameters, const FGameplayEffectContextHandle& EffectContext);
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-manager"></a>
+#### 4.8.5 Gameplay Cue Manager
+
+기본적으로 `GameplayCueManager`는 게임 디렉토리 전체를 스캔하여 `GameplayCueNotify`를 찾고, 게임 실행 시 이를  메모리에 로드합니다. 이 경로를 변경하려면 `DefaultGame.ini`에서 `GameplayCueManager`가 스캔하는 경로를 설정할 수 있습니다.
+
+```
+[/Script/GameplayAbilities.AbilitySystemGlobals]
+GameplayCueNotifyPaths="/Game/GASDocumentation/Characters"
+```
+
+`GameplayCueManager`가 모든 `GameplayCueNotify`를 스캔하고 찾도록 할 수 있지만, 게임 시작 시 모든 것을 비동기적으로 로드하지 않도록 설정할 수 있습니다. 이렇게 하면 `GameplayCueNotify`와 그와 관련된 모든 사운드와 파티클이 레벨에서 사용되었는지와 관계없이 메모리에 로드되지 않습니다. Paragon과 같은 대형 게임에서는 이로 인해 수백 메가바이트의 불필요한 자산이 메모리에 로드되어 게임 시작 시 Hitching(버벅거림)이나 Freezing(게임 멈춤)을 초래할 수 있습니다.
+
+게임 시작 시 모든 `GameplayCue`를 비동기적으로 로드하는 대신, `GameplayCue`가 게임 내에서 트리거될 때만 비동기적으로 로드하도록 설정할 수 있습니다. 이 방법은 불필요한 메모리 사용을 줄이고 게임이 시작될 때 `GameplayCue`를 비동기적으로 로드할 때 발생할 수 있는 게임의 하드 프리징을 방지하는 데 도움이 됩니다. 그러나 특정 `GameplayCue`가 게임 중 처음 트리거될 때 약간의 지연이 발생할 수 있습니다. 이 지연은 SSD에서는 발생하지 않으며, HDD에서는 테스트되지 않았습니다. UE Editor를 사용할 경우, GameplayCue가 처음 로드될 때 파티클 시스템을 컴파일해야 할 수 있으므로 약간의 Hitching이나 Freezing이 발생할 수 있습니다. 그러나 빌드에서는 이미 파티클 시스템이 컴파일되었으므로 문제가 되지 않습니다.
+
+먼저 `UGameplayCueManager`를 서브클래싱하고, `AbilitySystemGlobals` 클래스가 우리의 `UGameplayCueManager` 서브클래스를 사용하도록 `DefaultGame.ini`에서 설정해야 합니다.
+
+```
+[/Script/GameplayAbilities.AbilitySystemGlobals]
+GlobalGameplayCueManagerClass="/Script/ParagonAssets.PBGameplayCueManager"
+```
+
+그 후, `UGameplayCueManager` 서브클래스에서 `ShouldAsyncLoadRuntimeObjectLibraries()`를 오버라이드합니다.
+
+```c++
+virtual bool ShouldAsyncLoadRuntimeObjectLibraries() const override
+{
+	return false;
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-prevention"></a>
+#### 4.8.6 GameplayCue가 발동되지 않도록 방지
+
+때때로 `GameplayCue`가 실행되지 않기를 원할 수 있습니다. 예를 들어, 공격을 차단하는 경우 피해 `GameplayEffect`에 연결된 피격 임팩트를 재생하지 않거나 대신 커스텀 피격 임팩트를 재생하고 싶을 수 있습니다. 이 경우 [`GameplayEffectExecutionCalculations`](#concepts-ge-ec) 내에서 `OutExecutionOutput.MarkGameplayCuesHandledManually()`를 호출하고, 이후 `ASC`의 `Target`이나 `Source`에 수동으로 `GameplayCue` 이벤트를 전송할 수 있습니다.
+
+특정 `ASC`에서 `GameplayCue`가 전혀 실행되지 않게 하려면, `AbilitySystemComponent->bSuppressGameplayCues = true;`로 설정할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-batching"></a>
+#### 4.8.7 Gameplay Cue Batching(일괄 처리)
+
+트리거된 각 `GameplayCue`는 Unreliable NetMulticast RPC입니다. 여러 `GameplayCue`를 동시에 발사하는 상황에서는, 이를 하나의 RPC로 압축하거나 데이터를 덜 전송하여 대역폭을 절약할 수 있는 몇 가지 최적화 방법이 있습니다.
+
+<a name="concepts-gc-batching-manualrpc"></a>
+##### 4.8.7.1 수동 RPC
+
+예를 들어, 샷건이 8개의 총알을 발사한다고 가정해 보겠습니다. 그러면 8개의 트레이스와 임팩트 `GameplayCue`가 발생합니다. [GASShooter](https://github.com/tranek/GASShooter)는 이를 하나의 RPC로 합치는 간단한 방법을 사용하여 모든 트레이스 정보를 [`EffectContext`](#concepts-ge-ec)에 [`TargetData`](#concepts-targeting-data)로 저장합니다. 이렇게 하면 RPC 수가 8에서 1로 줄어들지만, 여전히 그 하나의 RPC에서 약 500바이트의 데이터가 전송됩니다. 더 최적화된 방법은 임팩트 위치를 효율적으로 인코딩하는 커스텀 구조체를 사용하여 RPC를 보내거나, 랜덤 시드 번호를 사용해 수신 측에서 임팩트 위치를 재생성하거나 근사화하는 방법입니다. 클라이언트는 이 커스텀 구조체를 언팩하여 [로컬에서 실행되는 `GameplayCue`](#concepts-gc-local)로 변환합니다.
+
+이 방법은 다음과 같이 작동합니다:
+
+1. `FScopedGameplayCueSendContext`를 선언합니다. 이것은 `UGameplayCueManager::FlushPendingCues()`의 호출을 범위 밖으로 나올 때까지 억제하여, 모든 `GameplayCue`가 `FScopedGameplayCueSendContext` 범위 밖으로 나올 때까지 큐에 저장됩니다.
+1. `UGameplayCueManager::FlushPendingCues()`를 오버라이드하여, 일부 `GameplayTag`에 따라 배치할 수 있는 `GameplayCue`들을 커스텀 구조체에 병합하고 이를 클라이언트로 RPC로 전송합니다.
+1. 클라이언트는 커스텀 구조체를 수신하고 이를 로컬에서 실행되는 `GameplayCue`로 언팩합니다.
+
+이 방법은 `FGameplayCueParameters`에 맞지 않는 특정 `GameplayCue` 파라미터가 필요할 때, 예를 들어 피해 수치, 치명타 표시, 방어구가 파괴된 표시, 치명적인 타격 표시 등과 같은 `EffectContext`를 추가하려고 할 때 유용하게 사용할 수 있습니다.
+
+https://forums.unrealengine.com/development-discussion/c-gameplay-programming/1711546-fscopedgameplaycuesendcontext-gameplaycuemanager
+
+<a name="concepts-gc-batching-gcsonge"></a>
+##### 4.8.7.2 하나의 GE에 여러 개의 GC
+
+`GameplayEffect`에 있는 모든 `GameplayCue`는 이미 하나의 RPC로 전송됩니다. 기본적으로 `UGameplayCueManager::InvokeGameplayCueAddedAndWhileActive_FromSpec()`는 전체 `GameplayEffectSpec`(그러나 `FGameplayEffectSpecForRPC`로 변환된 형태)을 NetMulticast로 전송합니다. 이는 `ASC`의 ``Replication Mode``와 관계없이 신뢰할 수 없는 방식으로 전송됩니다. 이 방식은 `GameplayEffectSpec`에 포함된 데이터에 따라 많은 대역폭을 차지할 수 있습니다. 이를 최적화하려면 cvar `AbilitySystem.AlwaysConvertGESpecToGCParams 1`을 설정할 수 있습니다. 이 설정은 `GameplayEffectSpec`을 `FGameplayCueParameters` 구조체로 변환하여, `FGameplayEffectSpecForRPC` 대신 이 구조체만 RPC로 전송하게 합니다. 이 방식은 잠재적으로 대역폭을 절약할 수 있지만, `GESpec`이 `FGameplayCueParameters`로 변환되는 과정에서 정보가 일부 손실될 수 있으며, 이는 각 `GameplayCue`가 요구하는 정보에 따라 다를 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-events"></a>
+#### 4.8.8 Gameplay Cue Events
+
+`GameplayCue`는 특정 `EGameplayCueEvent`에 반응합니다:
+
+| `EGameplayCueEvent` | 설명                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OnActive`          | `GameplayCue`가 활성화(추가)될 때 호출됩니다.                                                                                                                                                                                                                                                                                   |
+| `WhileActive`       | `GameplayCue`가 활성 상태일 때 호출되며, 실제로 바로 적용되지 않았더라도 진행 중인 경우에 호출됩니다(진행 중 조인 등). 이는 `Tick`이 아니며, `GameplayCueNotify_Actor`가 추가되거나 `OnActive`일 때 한 번만 호출됩니다. `Tick()`이 필요하면 `GameplayCueNotify_Actor`의 `Tick()`을 사용해야 합니다. 결국 이것은 `AActor`입니다. |
+| `Removed`           | `GameplayCue`가 제거될 때 호출됩니다. 이 이벤트에 응답하는 블루프린트 `GameplayCue` 함수는 `OnRemove`입니다.                                                                                                                                                                                                             |
+| `Executed`          | `GameplayCue`가 실행될 때 호출됩니다: Instant Effect나 Periodic Tick(). 이 이벤트에 응답하는 블루프린트 `GameplayCue` 함수는 `OnExecute`입니다.                                                                                                                                                                     |
+`GameplayCue` 시작 시 발생하는 `GameplayCue`의 모든 이펙트에 `OnActive`를 사용하되, 늦게 참여하는 플레이어가 놓쳐도 괜찮은 경우 사용합니다. `WhileActive`는 `GameplayCue`에서 지속적으로 발생하는 효과에 사용하며, 늦게 합류한 플레이어도 볼 수 있도록 해야 합니다. 예를 들어 MOBA에서 타워 구조물이 폭발하는 GameplayCue가 있을 때, 초기 폭발 파티클 시스템과 폭발 사운드는 `OnActive`에 넣고 폭발 후 지속적으로 발생하는 불꽃 파티클이나 사운드는 `WhileActive`에 넣을 수 있습니다. 이 시나리오에서는 뒤늦게 합류한 플레이어가 초기 폭발을 `OnActive`에서 재생하는 것은 의미가 없지만, 폭발이 발생한 후 지면에 지속적이고 반복되는 불꽃 이펙트를 `WhileActive`에서 볼 수 있게 하려는 것입니다. `OnRemove`는 `OnActive`와 `WhileActive`에 추가된 모든 항목을 정리해야 합니다. 
+
+* `WhileActive`는 액터가 `GameplayCueNotify_Actor`의 연관성 범위에 들어올 때마다 호출됩니다. 
+* `OnRemove`는 액터가 `GameplayCueNotify_Actor`의 연관성 범위를 벗어날 때마다 호출됩니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-gc-reliability"></a>
+#### 4.8.9 Gameplay Cue Reliability(신뢰성)
+
+`GameplayCue`는 일반적으로 비신뢰성을 가지므로, 직접적으로 게임 플레이에 영향을 미치는 요소에는 적합하지 않습니다.
+
+**실행된** `GameplayCue`: 비신뢰성 멀티캐스트(Unreliable Multicast)를 통해 적용되며 항상 신뢰성이 보장되지 않습니다.
+
+**`GameplayEffect`에서 적용되는 `GameplayCue`**:
+* Autonomous Proxy는 `OnActive`, `WhileActive`, `OnRemove` 이벤트를 신뢰성 있게 수신합니다.  `FActiveGameplayEffectsContainer::NetDeltaSerialize()`는 `OnActive`와 `WhileActive`를 호출하기 위해 `UAbilitySystemComponent::HandleDeferredGameplayCues()`를 실행합니다. `FActiveGameplayEffectsContainer::RemoveActiveGameplayEffectGrantedTagsAndModifiers()`는 `OnRemoved`를 호출합니다.
+* Simulated Proxy는 `WhileActive`와 `OnRemove`를 신뢰성 있게 수신합니다. `UAbilitySystemComponent::MinimalReplicationGameplayCues`의 리플리케이션은 `WhileActive`와 `OnRemove`를 호출합니다. `OnActive` 이벤트는 비신뢰성 멀티캐스트에 의해 호출됩니다.
+
+**`GameplayEffect`없이 적용되는 `GameplayCue`:**
+* Autonomous Proxy는 `OnRemove`를 신뢰성 있게 수신합니다. `OnActive`와 `WhileActive` 이벤트는 비신뢰성 멀티캐스트로 호출됩니다.
+* Simulated Proxy는 `WhileActive`와 `OnRemove`를 신뢰성 있게 수신합니다. `UAbilitySystemComponent::MinimalReplicationGameplayCues`의 리플리케이션은 `WhileActive`와 `OnRemove`를 호출합니다. `OnActive` 이벤트는 비신뢰성 멀티캐스트에 의해 호출됩니다.
+
+`GameplayCue`에서 신뢰성이 필요한 경우, 해당 `GameplayCue`를 `GameplayEffect`를 통해 적용하고, `WhileActive`에서 FX를 추가하며 `OnRemove`에서 FX를 제거하도록 설정하세요.
+
+**[⬆ 위로 가기](#table-of-contents)**

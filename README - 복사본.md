@@ -2297,13 +2297,12 @@ A `GameplayAbility`'s `NetSecurityPolicy` determines where should an ability exe
 
 **[⬆ Back to Top](#table-of-contents)**
 
-===== 여기부터 ===== 
-
 <a name="concepts-at"></a>
 ### 4.7 Ability Tasks
 
 <a name="concepts-at-definition"></a>
 ### 4.7.1 Ability Task Definition
+
 `GameplayAbilities` only execute in one frame. This does not allow for much flexibility on its own. To do actions that happen over time or require responding to delegates fired at some point later in time we use latent actions called `AbilityTasks`.
 
 GAS comes with many `AbilityTasks` out of the box:
@@ -2320,6 +2319,7 @@ The `UAbilityTask` constructor enforces a hardcoded game-wide maximum of 1000 co
 
 <a name="concepts-at-definition"></a>
 ### 4.7.2 Custom Ability Tasks
+
 Often you will be creating your own custom `AbilityTasks` (in C++). The Sample Project comes with two custom `AbilityTasks`:
 1. `PlayMontageAndWaitForEvent` is a combination of the default `PlayMontageAndWait` and `WaitGameplayEvent` `AbilityTasks`. This allows animation montages to send gameplay events from `AnimNotifies` back to the `GameplayAbility` that started them. Use this to trigger actions at specific times during animation montages.
 1. `WaitReceiveDamage` listens for the `OwnerActor` to receive damage. The passive armor stacks `GameplayAbility` removes a stack of armor when the hero receives an instance of damage.
@@ -2342,6 +2342,7 @@ Often you will be creating your own custom `AbilityTasks` (in C++). The Sample P
 
 <a name="concepts-at-using"></a>
 ### 4.7.3 Using Ability Tasks
+
 To create and activate an `AbilityTask` in C++ (From `GDGA_FireGun.cpp`):
 ```c++
 UGDAT_PlayMontageAndWaitForEvent* Task = UGDAT_PlayMontageAndWaitForEvent::PlayMontageAndWaitForEvent(this, NAME_None, MontageToPlay, FGameplayTagContainer(), 1.0f, NAME_None, false, 1.0f);
@@ -2363,6 +2364,7 @@ To manually cancel an `AbilityTask`, just call `EndTask()` on the `AbilityTask` 
 
 <a name="concepts-at-rms"></a>
 ### 4.7.4 Root Motion Source Ability Tasks
+
 GAS comes with `AbilityTasks` for moving `Characters` over time for things like knockbacks, complex jumps, pulls, and dashes using `Root Motion Sources` hooked into the `CharacterMovementComponent`.
 
 **Note:** Predicting `RootMotionSource` `AbilityTasks` works up to engine version 4.19 and 4.25+. Prediction is bugged for engine versions 4.20-4.24; however, the `AbilityTasks` still perform their function in multiplayer with minor net corrections and work perfectly in single player. It is possible to cherry pick the [prediction fix](https://github.com/EpicGames/UnrealEngine/commit/94107438dd9f490e7b743f8e13da46927051bf33#diff-65f6196f9f28f560f95bd578e07e290c) from 4.25 into a custom 4.20-4.24 engine.
@@ -2374,6 +2376,7 @@ GAS comes with `AbilityTasks` for moving `Characters` over time for things like 
 
 <a name="concepts-gc-definition"></a>
 #### 4.8.1 Gameplay Cue Definition
+
 `GameplayCues` (`GC`) execute non-gameplay related things like sound effects, particle effects, camera shakes, etc. `GameplayCues` are typically replicated (unless explicitly `Executed`, `Added`, or `Removed` locally) and predicted.
 
 We trigger `GameplayCues` by sending a corresponding `GameplayTag` with the **mandatory parent name of `GameplayCue.`** and an event type (`Execute`, `Add`, or `Remove`) to the `GameplayCueManager` via the `ASC`. `GameplayCueNotify` objects and other `Actors` that implement the `IGameplayCueInterface` can subscribe to these events based on the `GameplayCue's` `GameplayTag` (`GameplayCueTag`).
@@ -2430,6 +2433,7 @@ void RemoveAllGameplayCues();
 
 <a name="concepts-gc-local"></a>
 #### 4.8.3 Local Gameplay Cues
+
 The exposed functions for firing `GameplayCues` from `GameplayAbilities` and the `ASC` are replicated by default. Each `GameplayCue` event is a multicast RPC. This can cause a lot of RPCs. GAS also enforces a maximum of two of the same `GameplayCue` RPCs per net update. We avoid this by using local `GameplayCues` where we can. Local `GameplayCues` only `Execute`, `Add`, or `Remove` on the individual client.
 
 Scenarios where we can use local `GameplayCues`:
@@ -2474,6 +2478,7 @@ If a `GameplayCue` was `Added` locally, it should be `Removed` locally. If it wa
 
 <a name="concepts-gc-parameters"></a>
 #### 4.8.4 Gameplay Cue Parameters
+
 `GameplayCues` receive a `FGameplayCueParameters` structure containing extra information for the `GameplayCue` as a parameter. If you manually trigger the `GameplayCue` from a function on the `GameplayAbility` or the `ASC`, then you must manually fill in the `GameplayCueParameters` structure that is passed to the `GameplayCue`. If the `GameplayCue` is triggered by a `GameplayEffect`, then the following variables are automatically filled in on the `GameplayCueParameters` structure:
 
 * AggregatedSourceTags
@@ -2500,6 +2505,7 @@ virtual void InitGameplayCueParameters(FGameplayCueParameters& CueParameters, co
 
 <a name="concepts-gc-manager"></a>
 #### 4.8.5 Gameplay Cue Manager
+
 By default, the `GameplayCueManager` will scan the entire game directory for `GameplayCueNotifies` and load them into memory on play. We can change the path where the `GameplayCueManager` scans by setting it in the `DefaultGame.ini`.
 
 ```
@@ -2531,6 +2537,7 @@ virtual bool ShouldAsyncLoadRuntimeObjectLibraries() const override
 
 <a name="concepts-gc-prevention"></a>
 #### 4.8.6 Prevent Gameplay Cues from Firing
+
 Sometimes we don't want `GameplayCues` to fire. For example if we block an attack, we may not want to play the hit impact attached to the damage `GameplayEffect` or play a custom one instead. We can do this inside of [`GameplayEffectExecutionCalculations`](#concepts-ge-ec) by calling `OutExecutionOutput.MarkGameplayCuesHandledManually()` and then manually sending our `GameplayCue` event to the `Target` or `Source's` `ASC`.
 
 If you never want any `GameplayCues` to fire on a specific `ASC`, you can set `AbilitySystemComponent->bSuppressGameplayCues = true;`.
@@ -2539,10 +2546,12 @@ If you never want any `GameplayCues` to fire on a specific `ASC`, you can set `A
 
 <a name="concepts-gc-batching"></a>
 #### 4.8.7 Gameplay Cue Batching
+
 Each `GameplayCue` triggered is an unreliable NetMulticast RPC. In situations where we fire multiple `GCs` at the same time, there are a few optimization methods to condense them down into one RPC or save bandwidth by sending less data.
 
 <a name="concepts-gc-batching-manualrpc"></a>
 ##### 4.8.7.1 Manual RPC
+
 Say you have a shotgun that shoots eight pellets. That's eight trace and impact `GameplayCues`. [GASShooter](https://github.com/tranek/GASShooter) takes the lazy approach of combining them into one RPC by stashing all of the trace information into the [`EffectContext`](#concepts-ge-ec) as [`TargetData`](#concepts-targeting-data). While this reduces the RPCs from eight to one, it still sends a lot of data over the network in that one RPC (~500 bytes). A more optimized approach is to send an RPC with a custom struct where you efficiently encode the hit locations or maybe you give it a random seed number to recreate/approximate the impact locations on the receiving side. The clients would then unpack this custom struct and turn back into [locally executed `GameplayCues`](#concepts-gc-local).
 
 How this works:
@@ -2556,12 +2565,14 @@ https://forums.unrealengine.com/development-discussion/c-gameplay-programming/17
 
 <a name="concepts-gc-batching-gcsonge"></a>
 ##### 4.8.7.2 Multiple GCs on one GE
+
 All of the `GameplayCues` on a `GameplayEffect` are sent in one RPC already. By default, `UGameplayCueManager::InvokeGameplayCueAddedAndWhileActive_FromSpec()` will send the whole `GameplayEffectSpec` (but converted to `FGameplayEffectSpecForRPC`) in the unreliable NetMulticast regardless of the `ASC`'s `Replication Mode`. This could potentially be a lot of bandwidth depending on what is in the `GameplayEffectSpec`. We can potentially optimize this by setting the cvar `AbilitySystem.AlwaysConvertGESpecToGCParams 1`. This will convert `GameplayEffectSpecs` to `FGameplayCueParameter` structures and RPC those instead of the whole `FGameplayEffectSpecForRPC`. This potentially saves bandwidth but also has less information, depending on how the `GESpec` is converted to `GameplayCueParameters` and what your `GCs` need to know.
 
 **[⬆ Back to Top](#table-of-contents)**
 
 <a name="concepts-gc-events"></a>
 #### 4.8.8 Gameplay Cue Events
+
 `GameplayCues` respond to specific `EGameplayCueEvents`:
 
 | `EGameplayCueEvent` | Description                                                                                                                                                                                                                                                                                                                         |
@@ -2597,6 +2608,9 @@ The `OnActive` and `WhileActive` events are called by an unreliable multicast.
 If you need something in a `GameplayCue` to be 'reliable', then apply it from a `GameplayEffect` and use `WhileActive` to add the FX and `OnRemove` to remove the FX.
 
 **[⬆ Back to Top](#table-of-contents)**
+
+
+==== 여기부터 ===== 
 
 <a name="concepts-asg"></a>
 ### 4.9 Ability System Globals
