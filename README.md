@@ -113,6 +113,23 @@
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.7.2 [하나의 GE에 여러 개의 GC](#concepts-gc-batching-gcsonge)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.8 [Gameplay Cue Events](#concepts-gc-events)  
 >    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.8.9 [Gameplay Cue Reliability(신뢰성)](#concepts-gc-reliability)  
+>    4.9 [Ability System Globals](#concepts-asg)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.9.1 [InitGlobalData()](#concepts-asg-initglobaldata)  
+>    4.10 [Prediction](#concepts-p)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.10.1 [Prediction Key](#concepts-p-key)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.10.2 [Ability에서 새로운 Prediction Windows 만들기](#concepts-p-windows)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.10.3 [액터 스폰 예측](#concepts-p-spawn)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.10.4 [GAS Prediction 기능의 미래](#concepts-p-future)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.10.5 [Network Prediction Plugin](#concepts-p-npp)  
+>    4.11 [Targeting](#concepts-targeting)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.11.1 [Target Data](#concepts-targeting-data)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.11.2 [Target Actors](#concepts-targeting-actors)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.11.3 [Target Data Filters](#concepts-target-data-filters)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.11.4 [Gameplay Ability World Reticles](#concepts-targeting-reticles)  
+>    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;4.11.5 [Gameplay Effect Containers Targeting](#concepts-targeting-containers)  
+
+
+
 
 <a name="intro"></a>
 ## 1. GameplayAbilitySystem Plugin의 소개
@@ -2632,3 +2649,382 @@ https://forums.unrealengine.com/development-discussion/c-gameplay-programming/17
 `GameplayCue`에서 신뢰성이 필요한 경우, 해당 `GameplayCue`를 `GameplayEffect`를 통해 적용하고, `WhileActive`에서 FX를 추가하며 `OnRemove`에서 FX를 제거하도록 설정하세요.
 
 **[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-asg"></a>
+### 4.9 Ability System Globals
+
+[`AbilitySystemGlobals`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/UAbilitySystemGlobals/index.html) 클래스는 GAS에 대한 전역 정보를 담고 있습니다. 대부분의 변수는 `DefaultGame.ini`에서 설정할 수 있습니다. 일반적으로 이 클래스와 상호작용할 필요는 없지만, 그 존재를 알고 있어야 합니다. [`GameplayCueManager`](#concepts-gc-manager) 또는 [`GameplayEffectContext`](#concepts-ge-context)와 같은 것을 서브클래싱해야 하는 경우, `AbilitySystemGlobals`를 통해 서브클래싱해야 합니다.
+
+`AbilitySystemGlobals`를 서브클래싱하려면 `DefaultGame.ini`에서 클래스 이름을 설정하세요:
+```
+[/Script/GameplayAbilities.AbilitySystemGlobals]
+AbilitySystemGlobalsClassName="/Script/ParagonAssets.PAAbilitySystemGlobals"
+```
+
+<a name="concepts-asg-initglobaldata"></a>
+#### 4.9.1 InitGlobalData()
+
+UE 4.24 ~ 5.2 사이에서는 [`TargetData`](#concepts-targeting-data)를 사용하기 위해 `UAbilitySystemGlobals::Get().InitGlobalData()`를 호출해야 하며, 그렇지 않을 경우 `ScriptStructCache`와 관련된 오류가 발생하고 클라이언트가 서버와 연결이 끊길 수 있습니다. 이 함수는 프로젝트에서 한 번만 호출하면 됩니다. 이 함수를 포트나이트에서는 `UAssetManager::StartInitialLoading()`에서 호출했고, Paragon은 `UEngine::Init()`에서 호출했습니다. 샘플 프로젝트에서는 이를 `UAssetManager::StartInitialLoading()`에 배치하는 것이 좋은 방법으로 제시됩니다. 이 코드는 `TargetData` 문제를 방지하기 위해 프로젝트에 복사해 사용하는 기본 코드로 간주할 수 있습니다. UE 5.3부터는 이 함수가 자동으로 호출됩니다.
+
+만약 `AbilitySystemGlobals`의 `GlobalAttributeSetDefaultsTableNames`를 사용하는 도중 충돌이 발생한다면, Fortnite처럼 `AssetManager`나 `GameInstance`에서 `UAbilitySystemGlobals::Get().InitGlobalData()`를 나중에 호출해야 할 수도 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p"></a>
+### 4.10 Prediction
+
+GAS는 클라이언트 측 예측을 기본적으로 지원하지만, 모든 것을 예측하지는 않습니다. GAS에서의 클라이언트 측 예측은 클라이언트가 서버의 승인을 기다리지 않고 `GameplayAbility`를 활성화하고 `GameplayEffect`를 적용할 수 있다는 의미입니다. 클라이언트는 서버가 이를 허용할 것이라고 예측하고, 예측한 대로 타겟에 `GameplayEffect`를 적용합니다. 그 후 서버는 `GameplayAbility` network latency-time이 지난 후 클라이언트가 예측한 것이 맞았는지 여부를 알려줍니다. 만약 클라이언트가 잘못 예측했다면, 서버와 일치하도록 변경 사항을 롤백합니다.
+
+GAS 관련 예측의 결정적인 출처는 `GameplayPrediction.h`에 있는 플러그인 소스 코드입니다.
+
+에픽 게임즈의 마인드셋은 할 수 있는 것만 예측하라입니다. 예를 들어, Paragon과 Fortnite는 피해를 예측하지 않습니다. 대부분 [`ExecutionCalculations`](#concepts-ge-ec)를 사용하여 피해를 처리하며, 이는 예측할 수 없습니다. 그렇다고 해서 피해 같은 것을 예측할 수 없다는 것은 아닙니다. 만약 예측이 잘 된다면, 그렇게 하는 것도 좋습니다.
+
+> "모든 것을 완벽하게 자동으로 예측하는" 솔루션에 올인하는 것도 아닙니다. 저희는 여전히 플레이어 예측을 최소한으로 유지하는 것이 가장 좋다고 생각합니다(즉, 플레이어가 피할 수 있는 최소한의 것만 예측하는 것이 좋습니다).
+
+[Network Prediction Plugin](#concepts-p-npp)에 대한 에픽 게임즈의 데이브 라티의 코멘트.
+
+predicted되는 것:
+> * Ability 활성화
+> * 트리거된 이벤트
+> * GameplayEffect 적용
+>    * Attribute 수정(예외: Execution은 전혀 예측되지 않으며, Attribute Modifier에서 예측됩니다.)
+>    * GameplayTag 수정
+> * GameplayCue 이벤트(예측된 GameplayEffect와 그 자체로도 가능합니다.)
+> * 몽타주
+> * 움직임 (UE5 UCharacterMovement 내장)
+
+predicted되지 않는 것:
+> * GameplayEffect 제거
+> * GameplayEffect 주기적 효과 (예: 지속 피해)
+
+*From `GameplayPrediction.h`*
+
+우리는 `GameplayEffect`의 적용은 예측할 수 있지만, `GameplayEffect`의 제거는 예측할 수 없습니다. 이 제한을 해결하기 위한 방법 중 하나는, `GameplayEffect`를 제거하려고 할 때 그 반대 효과를 예측하는 것입니다. 예를 들어, 40%의 이동 속도 감소를 예측한다고 가정합시다. 이를 예측적으로 제거하려면 40%의 이동 속도 증가를 적용한 후, 두 개의 `GameplayEffect`를 동시에 제거하는 방법을 사용할 수 있습니다. 이 방법은 모든 시나리오에 적합하지 않으며, `GameplayEffect` 제거 예측에 대한 지원은 여전히 필요합니다. Dave Ratti는 이 기능을 [GAS의 향후 버전](https://epicgames.ent.box.com/s/m1egifkxv3he3u3xezb9hzbgroxyhx89)에 추가하고자 하는 의사를 표명했습니다.
+
+`GameplayEffect` 제거를 예측할 수 없기 때문에 `GameplayAbility`의 Cooldown도 완전히 예측할 수 없습니다. `Cooldown GameplayEffect`에 대한 반대 효과는 없기 때문에, 서버의 `Cooldown GE`는 클라이언트에 복제되어 있으며, 이를 우회하려는 시도(예: `Minimal` 리플리케이션 모드)는 서버에서 거부됩니다. 즉, 높은 지연 시간을 가진 클라이언트는 서버에 Cooldown을 요청하고 서버의 `Cooldown GE` 제거를 받는 데 더 오랜 시간이 걸립니다. 이로 인해 높은 지연 시간을 가진 플레이어는 낮은 지연 시간을 가진 플레이어들보다 더 낮은 발사 속도를 가지게 되어, 낮은 지연 시간의 플레이어들에게 불리한 상황이 발생합니다. Fortnite는 이 문제를 커스텀 기록 관리로 해결합니다.
+
+피해 예측에 대해 저는 개인적으로 추천하지 않습니다. 이는 많은 사람들이 GAS를 처음 시작할 때 가장 먼저 시도하는 부분입니다. 특히 죽음 예측은 추천하지 않습니다. 피해를 예측할 수 있지만, 이를 잘못 예측하는 것은 어려운 문제입니다. 예를 들어, 적의 피해를 예측하는 데 실패하면, 플레이어는 적의 체력이 갑자기 회복된 것을 볼 수 있습니다. 죽음 예측을 시도하면 특히 불편하고 혼란스러울 수 있습니다. 예를 들어, 캐릭터가 죽었다고 예측하여 Ragdoll 상태가 시작되었지만, 서버가 이를 수정하면 Ragdoll이 멈추고 계속해서 플레이어를 공격할 수 있습니다.
+
+> **Note:** `Instant` `GameplayEffect`(예: `Cost GE`)는 자신에게 `Attribute`를 예측하는 데 원활하게 예측할 수 있습니다. 그러나 다른 캐릭터에 대한 `Instant` `Attribute` 변경을 예측하면, 그들의 `Attribute`에 잠시 간격이 생기거나 깜빡임(Blip)이 나타날 수 있습니다. 예측된 `Instant` `GameplayEffect`는 `Infinite` `GameplayEffect`처럼 처리되어 잘못 예측되었을 경우 롤백할 수 있습니다. 서버의 `GameplayEffect`가 적용되면 두 개의 동일한 `GameplayEffect`가 존재하게 되어 잠시 동안 `Modifier`가 두 번 적용되거나 적용되지 않을 수 있습니다. 결국 수정되지만, 이 깜빡임은 플레이어에게 눈에 띄는 경우가 있을 수 있습니다.
+
+GAS의 prediction 구현이 해결하려는 문제들:
+> 1. "해도 되는가?" 예측을 위한 기본 프로토콜
+> 2. "실행 취소" 예측이 실패했을 때 부작용을 되돌리는 방법
+> 3. "재실행" 클라이언트가 예측한 부작용을 서버에서 리플리케이트하여 다시 실행하지 않도록 하는 방법
+> 4. "완전성" 모든 부작용을 진정으로 예측했는지 확인하는 방법
+> 5. "종속성" 예측된 이벤트와 의존적인 이벤트의 관리 방법
+> 6. "재정의" 서버에서 리플리케이되거나 소유된 상태를 예측적으로 오버라이드하는 방법
+
+*From `GameplayPrediction.h`*
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p-key"></a>
+#### 4.10.1 Prediction Key
+
+GAS의 예측은 `Prediction Key`라는 개념을 기반으로 작동하며, 이는 클라이언트가 `GameplayAbility`를 활성화할 때 생성하는 정수 식별자입니다.
+
+* 클라이언트는 `GameplayAbility`를 활성화할 때 예측 키를 생성합니다. 이것이 `Activation Prediction Key`입니다.
+* 클라이언트는 이 예측 키를 `CallServerTryActivateAbility()`와 함께 서버에 전송합니다.
+* 클라이언트는 예측 키가 유효한 동안 적용하는 모든 `GameplayEffect`에 이 예측 키를 추가합니다.
+* 클라이언트의 예측 키가 범위를 벗어나면, 같은 `GameplayAbility`에서 추가로 예측된 효과에는 새로운 [Scoped Prediction Window](#concepts-p-windows)가 필요합니다.
+
+* 서버는 클라이언트로부터 예측 키를 받습니다.
+* 서버는 자신이 적용하는 모든 `GameplayEffect`에 이 예측 키를 추가합니다.
+* 서버는 예측 키를 클라이언트에게 다시 리플리케이트하여 전송합니다.
+
+* 클라이언트는 서버로부터 리플리케이트된 `GameplayEffect`를 예측 키와 함께 수신합니다. 클라이언트가 적용한 `GameplayEffect`와 동일한 예측 키를 가진 리플리케이트된 `GameplayEffect`가 일치하면, 이는 올바르게 예측된 것입니다. 이때 대상에는 잠시 두 개의 `GameplayEffect`가 존재하게 되며, 클라이언트는 예측한 것을 제거합니다.
+* 클라이언트는 서버로부터 예측 키를 다시 받습니다. 이것이 `Replicated Prediction Key`입니다. 이 예측 키는 이제 stale(유효하지 않음)로 표시됩니다.
+* 클라이언트는 이제 stale한 Replicated Prediction Key로 생성한 **모든 `GameplayEffect`**를 제거합니다. 서버에서 복제된 `GameplayEffect`는 계속 유지됩니다. 클라이언트가 추가했지만 서버에서 일치하는 복제본을 받지 못한 `GameplayEffect`는 잘못 예측된 것입니다.
+
+예측 키는 `GameplayAbility`에서 Activation Prediction Key로 시작되는 명령어 window를 통해 원자적으로 그룹화하는 동안 유효하도록 보장됩니다. 이를 한 프레임 동안만 유효한 것으로 생각할 수 있습니다. 지연된 작업을 처리하는 `AbilityTask`의 콜백은 더 이상 유효한 예측 키를 가지지 않으며, Synch Point가 내장된 `AbilityTask`가 새로운 [Scoped Prediction Window](#concepts-p-windows)를 생성해야만 예측 키가 유효합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p-windows"></a>
+#### 4.10.2 Ability에서 새로운 Prediction Windows 만들기
+
+`AbilityTask`의 콜백에서 더 많은 작업을 예측하려면, 새로운 Scoped Prediction Window와 새로운 Scoped Prediction Key를 생성해야 합니다. 이것은 클라이언트와 서버 간의 Synch Point라고도 불립니다. 입력과 관련된 모든 `AbilityTask`는 기본적으로 새로운 scoped prediction window를 생성하는 기능을 가지고 있어서, `AbilityTask`의 콜백에서 실행되는 원자적 코드에는 유효한 scoped prediction key가 제공됩니다.
+
+그러나 `WaitDelay`와 같은 다른 `AbilityTask`는 콜백에 대한 새로운 scoped prediction window를 생성하는 기본 코드를 제공하지 않습니다. `WaitDelay`와 같이 기본 코드가 없는 `AbilityTask` 후에 행동을 예측해야 할 경우, `WaitNetSync AbilityTask`를 사용하여 수동으로 새로운 scoped prediction window를 생성해야 합니다. `OnlyServerWait` 옵션을 사용한 `WaitNetSync`에 도달하면, 클라이언트는 `GameplayAbility`의 활성화 예측 키를 기반으로 새로운 scoped prediction key를 생성하고 이를 서버에 RPC로 전송한 후, 새로운 `GameplayEffect`에 이를 추가합니다.
+
+서버는 `OnlyServerWait` 옵션이 있는 `WaitNetSync`에 도달하면, 클라이언트로부터 새로운 scoped prediction key를 받기 전까지 기다립니다. 이 scoped prediction key는 activation prediction key와 동일한 방식으로 작동하며, `GameplayEffect`에 적용되고 클라이언트로 복제되어 stale로 표시됩니다. scoped prediction key는 범위에서 벗어날 때까지 유효하며, 즉 scoped prediction window가 닫힐 때까지 유효합니다. 다시 말해, 원자적 작업만 새 scoped prediction key를 사용할 수 있으며, 지연된 작업은 사용할 수 없습니다.
+
+필요한 만큼 여러 개의 scoped prediction window를 생성할 수 있습니다.
+
+자신의 custom `AbilityTask`에 synch point 기능을 추가하고 싶다면, 입력 관련 AbilityTask들이 `WaitNetSync` `AbilityTask` 코드를 어떻게 삽입하는지 살펴보세요.
+
+> **Note:** `WaitNetSync`를 사용할 때, 이는 서버의 `GameplayAbility`가 클라이언트로부터 정보를 받을 때까지 실행을 차단합니다. 이는 악의적인 사용자가 게임을 해킹하여 새로운 scoped prediction key를 보내는 것을 의도적으로 지연시킬 수 있기 때문에 잠재적으로 악용될 수 있습니다. Epic은 `WaitNetSync`를 신중하게 사용하고 있으며, 이러한 문제가 우려되는 경우 클라이언트 없이 자동으로 계속 진행되는 지연을 포함한 새로운 버전의 `AbilityTask`를 빌드하는 것을 권장합니다.
+
+샘플 프로젝트에서는 Sprint `GameplayAbility`에서 stamina cost를 적용할 때마다 새로운 scoped prediction window를 생성하기 위해 `WaitNetSync`를 사용하여 이를 예측할 수 있도록 하고 있습니다. 이상적으로는 Cost와 Cooldown을 적용할 때 유효한 예측 키를 갖는 것이 좋습니다.
+
+예측된 `GameplayEffect`가 소유 클라이언트에서 두 번 재생된다면, 예측 키가 stale되고 redo 문제가 발생한 것입니다. 보통은 `GameplayEffect`를 적용하기 전에 `WaitNetSync` `AbilityTask`를 `OnlyServerWait` 옵션으로 배치하여 새로운 scoped prediction key를 생성하면 이 문제를 해결할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p-spawn"></a>
+#### 4.10.3 액터 스폰 예측 
+
+클라이언트에서 예측적으로 `Actor`를 스폰하는 것은 고급 주제입니다. GAS에서는 이 기능을 기본적으로 제공하지 않으며, `SpawnActor` `AbilityTask`는 서버에서만 `Actor`를 생성합니다. 핵심 개념은 서버와 클라이언트 모두에서 리플리케이트된 `Actor`를 스폰하는 것입니다.
+
+만약 `Actor`가 단순히 장식용이거나 게임 플레이에 영향을 미치지 않는다면, 간단한 해결책은 Actor의 `IsNetRelevantFor()` 함수를 오버라이드하여 서버가 해당 클라이언트로 리플리케이트되는 것을 제한하는 것입니다. 이렇게 하면 소유 클라이언트는 로컬에서 생성된 Actor를 사용하고, 서버와 다른 클라이언트는 서버의 리플리케이트된 Actor를 사용하게 됩니다.
+
+```c++
+bool APAReplicatedActorExceptOwner::IsNetRelevantFor(const AActor * RealViewer, const AActor * ViewTarget, const FVector & SrcLocation) const
+{
+	return !IsOwnedBy(ViewTarget);
+}
+```
+
+만약 생성된 `Actor`가 게임플레이에 영향을 미치는 경우(예: 투사체처럼 피해 예측이 필요한 경우), 고급 로직이 필요하며 이는 이 문서의 범위를 벗어납니다. 예를 들어, Unreal Tournament에서는 투사체를 소유 클라이언트에서만 더미로 생성하고, 서버에서 리플리케이트된 투사체와 동기화하는 방법을 사용하고 있습니다. 이 방법은 에픽 게임즈의 GitHub에서 예측적으로 투사체를 생성하는 방법을 확인할 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p-future"></a>
+#### 4.10.4 GAS Prediction의 미래
+
+`GameplayPrediction.h`에서는 향후 `GameplayEffect` 제거 및 주기적인 `GameplayEffect`의 예측을 추가할 수 있는 기능을 제공할 수 있다고 명시되어 있습니다.
+
+에픽 게임즈의 데이브 라티는 Cooldown 예측에서 발생하는 `latency reconciliation`(`지연 시간 불일치`) 문제를 해결하려는 [관심을 표명](https://epicgames.ent.box.com/s/m1egifkxv3he3u3xezb9hzbgroxyhx89)했으며, 이 문제는 높은 지연 시간을 가진 플레이어가 낮은 지연 시간을 가진 플레이어보다 불리한 상황을 초래할 수 있습니다.
+
+에픽 게임즈의 새로운 [`Network Prediction` plugin](#concepts-p-npp) 플러그인은 이전의 `CharacterMovementComponent`와 마찬가지로 GAS와 완전히 호환될 것으로 예상됩니다. 이 플러그인은 GAS의 예측 기능을 개선하고, 예측을 보다 원활하게 처리할 수 있도록 도와줄 것입니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-p-npp"></a>
+#### 4.10.5 Network Prediction Plugin
+
+에픽 게임즈는 `CharacterMovementComponent`를 새로운 `Network Prediction` 플러그인으로 대체하는 프로젝트를 시작했습니다. 해당 플러그인은 아직 초기 단계에 있지만 언리얼 엔진 깃허브에서 얼리 액세스로 이용할 수 있습니다. 향후 언리얼 엔진의 어떤 버전에서 실험적 베타 버전으로 출시될지는 아직 알 수 없습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-targeting"></a>
+### 4.11 Targeting
+
+<a name="concepts-targeting-data"></a>
+#### 4.11.1 Target Data
+
+[`FGameplayAbilityTargetData`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/FGameplayAbilityTargetData/index.html)는 네트워크를 통해 전달될 `Target Data`용으로 설계된 일반 구조체입니다. Target Data에는 보통 `AActor`/`UObject` 레퍼런스, `FHitResults`, 그 이외의 위치/방향/원점 정보 등이 포함됩니다. 또한, 해당 구조체를 서브클래싱하면 [클라이언트와 서버 간에 데이터를 전달하는 간단한 수단](#concepts-ga-data)으로 원하는 모든 것을 `GameplayAbilities`에 넣을 수 있습니다. `FGameplayAbilityTargetData`는 기본적으로 직접 사용되기보다는 서브클래싱하여 사용하는 것을 목적으로 합니다. `GAS`는 이미 몇 가지 서브클래싱된 `FGameplayAbilityTargetData` 구조체를 제공하며, 이는 `GameplayAbilityTargetTypes.h`에 정의되어 있습니다.
+
+`TargetData`는 일반적으로 [`Target Actors`](#concepts-targeting-actors)에 의해 생성되거나 **수동으로 만들어지며**, [`AbilityTasks`](#concepts-at) 및 [`GameplayEffects`](#concepts-ge)에서 [`EffectContext`](#concepts-ge-context)를 통해 소비됩니다. `EffectContext`에 포함된 덕분에 [`Executions`](#concepts-ge-ec), [`MMCs`](#concepts-ge-mmc), [`GameplayCues`](#concepts-gc), 그리고 [`AttributeSet`](#concepts-as)의 백엔드 함수에서 `TargetData`에 접근할 수 있습니다.
+
+일반적으로 `FGameplayAbilityTargetData`를 직접 전달하지 않고, [`FGameplayAbilityTargetDataHandle`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/FGameplayAbilityTargetDataHandle/index.html)을 사용합니다. 이 핸들 구조체는 내부적으로 `FGameplayAbilityTargetData` 포인터를 담은 TArray를 가지고 있으며, 이를 통해 `TargetData`의 다형성을 지원합니다.
+
+아래는 `FGameplayAbilityTargetData`를 상속한 예제입니다:
+
+```c++
+USTRUCT(BlueprintType)
+struct MYGAME_API FGameplayAbilityTargetData_CustomData : public FGameplayAbilityTargetData
+{
+    GENERATED_BODY()
+public:
+
+    FGameplayAbilityTargetData_CustomData()
+    { }
+
+    UPROPERTY()
+    FName CoolName = NAME_None;
+
+    UPROPERTY()
+    FPredictionKey MyCoolPredictionKey;
+
+    // FGameplayAbilityTargetData를 상속한 모든 하위 구조체에서 필수입니다.
+    virtual UScriptStruct* GetScriptStruct() const override
+    {
+    	return FGameplayAbilityTargetData_CustomData::StaticStruct();
+    }
+
+	// 이는 FGameplayAbilityTargetData를 상속한 모든 하위 구조체에 필요합니다.
+    bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
+    {
+	    // 엔진은 이미 FName과 FPredictionKey에 대해 NetSerialize를 정의했습니다. 감사합니다, 에픽 게임즈!
+        CoolName.NetSerialize(Ar, Map, bOutSuccess);
+        MyCoolPredictionKey.NetSerialize(Ar, Map, bOutSuccess);
+        bOutSuccess = true;
+        return true;
+    }
+}
+
+template<>
+struct TStructOpsTypeTraits<FGameplayAbilityTargetData_CustomData> : public TStructOpsTypeTraitsBase2<FGameplayAbilityTargetData_CustomData>
+{
+	enum
+	{
+        WithNetSerializer = true // FGameplayAbilityTargetDataHandle net serialization이 작동하려면 필수입니다.
+	};
+};
+```
+핸들에 Target Data를 추가하는 방법:
+```c++
+UFUNCTION(BlueprintPure)
+FGameplayAbilityTargetDataHandle MakeTargetDataFromCustomName(const FName CustomName)
+{
+	// 우리의 Target Data 타입을 생성합니다.  
+    // 핸들은 소멸될 때 데이터를 자동으로 정리하고 삭제합니다.  
+    // 만약 이 데이터를 핸들에 추가하지 않는다면 메모리 관리와 메모리 누수 문제가 발생할 수 있으니,  
+    // 안전하게 프레임 내 어느 시점에라도 항상 핸들에 추가하는 것이 좋습니다!
+	FGameplayAbilityTargetData_CustomData* MyCustomData = new FGameplayAbilityTargetData_CustomData();
+	// 구조체의 정보를 설정하여 입력된 이름과 우리가 원하는 다른 변경 사항을 적용합니다.
+	MyCustomData->CoolName = CustomName;
+	
+	// Blueprint에서 사용할 핸들 래퍼를 만듭니다.
+	FGameplayAbilityTargetDataHandle Handle;
+	// 타겟 데이터를 핸들에 추가합니다.
+	Handle.Add(MyCustomData);
+	// 핸들을 Blueprint로 출력합니다.
+	return Handle
+}
+```
+값을 가져오기 위해서는 타입 안전성 검사가 필요합니다. 핸들의 Target Data에서 값을 가져오는 유일한 방법은 기본 C/C++ 캐스팅을 사용하는 것이지만, 이는 타입 안정성을 보장하지 않으므로 객체 슬라이싱이나 크래시를 유발할 수 있습니다. 타입 검사를 수행하는 방법에는 여러 가지가 있으며, 원하는 방식으로 구현할 수 있습니다. 하지만 흔히 사용되는 두 가지 방법은 다음과 같습니다.
+- GameplayTag: 서브클래스 계층 구조를 사용하여 특정 코드 아키텍처의 기능이 실행될 때, 기본 부모 타입으로 캐스팅하고 해당 객체의 GameplayTag를 가져옵니다. 그런 다음, 이를 기반으로 자식 클래스의 태그와 비교하여 해당 자식 클래스로 캐스팅할 수 있습니다.
+- Script Struct & Static Struct: 직접적인 클래스 비교를 수행하는 방법입니다. 여기에는 많은 if 문을 사용하거나 템플릿 함수를 작성하는 과정이 포함될 수 있습니다. 아래는 이러한 방식의 예제입니다. `FGameplayAbilityTargetData`에서 Script Struct를 가져올 수 있다는 점을 활용합니다. 해당 기능은 `USTRUCT`로 정의된 구조체를 사용하며, 상속된 클래스는 `GetScriptStruct`에서 구조체 타입을 명시해야 하기 때문에 가능합니다. 이를 통해 원하는 타입인지 확인하고 비교할 수 있습니다. 
+
+아래는 이러한 함수들을 사용하여 타입 검사를 수행하는 예제입니다:
+
+```c++
+UFUNCTION(BlueprintPure)
+FName GetCoolNameFromTargetData(const FGameplayAbilityTargetDataHandle& Handle, const int Index)
+{   
+    // NOTE: ::Get(int32 Index) 함수에는 두 가지 버전이 있습니다;
+    // 1) const 버전은 const FGameplayAbilityTargetData*를 반환하며, Target Data 값을 읽기에 적합합니다.
+    // 2) non-const 버전은 FGameplayAbilityTargetData*를 반환하며, Target Data 값을 수정하기에 적합합니다.
+    FGameplayAbilityTargetData* Data = Handle.Get(Index); // 이는 인덱스를 유효성 검사해줍니다.
+
+    // 사용할 수 있는 데이터가 있는지 확인, null 데이터는 캐스팅할 수 없음을 의미합니다.
+    if(Data == nullptr)
+    {
+       	return NAME_None;
+    }
+    // 이것은 기본적으로 타입 검사 단계입니다. static_cast는 타입 안전성이 없기 때문에 이 검사를 수행합니다.
+    // 이 검사를 하지 않으면 구조체가 객체 슬라이싱되어 타입을 확인할 방법이 없어집니다.
+    if(Data->GetScriptStruct() == FGameplayAbilityTargetData_CustomData::StaticStruct())
+    {
+        // 이제 캐스팅을 하는 부분입니다. 이미 올바른 타입임을 알기 때문에 안심하고 캐스팅할 수 있습니다.
+        FGameplayAbilityTargetData_CustomData* CustomData = static_cast<FGameplayAbilityTargetData_CustomData*>(Data);    
+        return CustomData->CoolName;
+    }
+    return NAME_None;
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-targeting-actors"></a>
+#### 4.11.2 Target Actors
+
+`GameplayAbility`는 `WaitTargetData` `AbilityTask`와 함께 [`TargetActors`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/AGameplayAbilityTargetActor/index.html)를 생성하여, World에서 타겟 정보를 시각화하고 캡처할 수 있습니다. `TargetActor`는 선택적으로 [`GameplayAbilityWorldReticles`](#concepts-targeting-reticles)을 사용하여 현재 타겟을 표시할 수 있습니다. 타겟 정보가 확인되면, 해당 정보는 [`TargetData`](#concepts-targeting-data)로 반환되어 `GameplayEffect`에 전달될 수 있습니다.
+
+`TargetActor`는 `AActor`를 기반으로 하므로 타겟이 **어디에 있는지**, **어떻게** 타겟팅하는지를 나타내기 위해 정적 메시나 데칼과 같은 시각적 컴포넌트를 가질 수 있습니다. 정적 메시를 사용하여 캐릭터가 생성할 물체의 배치 위치를 시각화하거나, 데칼을 사용하여 땅에 영향을 미치는 영역을 표시할 수 있습니다. 샘플 프로젝트에서는 Meteor 능력의 피해 범위를 나타내기 위해 땅에 데칼을 사용하는 [`AGameplayAbilityTargetActor_GroundTrace`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/AGameplayAbilityTargetActor_Grou-/index.html)를 사용합니다. 그러나 어떤 경우에는 표시할 것이 없을 수도 있습니다. 예를 들어, [GASShooter](https://github.com/tranek/GASShooter)에서처럼 즉시 타겟을 추적하는 히트스캔 총의 경우, 아무것도 표시할 필요가 없을 수 있습니다.
+
+`TargetActor`는 기본적으로 트레이스나 충돌 오버랩을 사용하여 타겟팅 정보를 캡처하고, 그 결과를 `FHitResult` 또는 `AActor` 배열로 변환하여 `TargetData`로 전달합니다. `WaitTargetData` `AbilityTask`는 `TEnumAsByteEGameplayTargetingConfirmation::Type ConfirmationType` 매개변수를 통해 타겟이 확인될 시점을 결정합니다. `TEnumAsByteEGameplayTargetingConfirmation::Type::Instant`을 **사용하지 않는** 경우, `TargetActor`는 일반적으로 `Tick()`에서 트레이스/오버랩을 수행하고 구현에 따라 `FHitResult`에 위치를 업데이트합니다. 이 방법은 `Tick()`에서 트레이스/오버랩을 수행하지만, 복제되지 않으며 보통 동시에 실행되는 `TargetActor`가 하나뿐이므로 성능에 큰 영향을 미치지 않습니다. 다만, 복잡한 `TargetActor`는 `Tick()`에서 많은 작업을 할 수 있으므로 성능에 부담이 될 수 있습니다. `Tick()`에서 트레이스를 하는 것은 클라이언트에서 매우 반응성이 좋지만, 성능 저하가 너무 크다면` TargetActor`의 틱 속도를 낮추는 것을 고려할 수 있습니다. `TEnumAsByteEGameplayTargetingConfirmation::Type::Instant`을 사용하는 경우, `TargetActor`는 즉시 생성되어 `TargetData`를 생성한 후 바로 파괴됩니다. 이 경우 `Tick()`은 호출되지 않습니다.
+
+| `EGameplayTargetingConfirmation::Type` | 타겟이 확인되는 시점                                                                                                                        |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Instant`                              | 타겟팅은 즉시 발생하며 특별한 로직이나 사용자 입력이 필요하지 않습니다.                                                                                                                                                                                                                            |
+| `UserConfirmed`                        | 타겟팅은 사용자가 [Ability에 바인딩된 Confirm 입력](#concepts-ga-input)을 통해 또는 `UAbilitySystemComponent::TargetConfirm()`을 호출하여 확인되었을 때 발생합니다. `TargetActor`는 바인딩된 `Cancel` 입력 또는 `UAbilitySystemComponent::TargetCancel()` 호출에 의해 타겟팅을 취소할 수도 있습니다.                              |
+| `Custom`                               | GameplayTargeting Ability가 `UGameplayAbility::ConfirmTaskByInstanceName()`을 호출하여 타겟팅 데이터가 준비된 시점을 결정합니다. `TargetActor`는 또한 `UGameplayAbility::CancelTaskByInstanceName()`을 호출하여 타겟팅을 취소할 수 있습니다.                                                                                              |
+| `CustomMulti`                          | GameplayTargeting Ability가 `UGameplayAbility::ConfirmTaskByInstanceName()`을 호출하여 타겟팅 데이터가 준비된 시점을 결정합니다. `TargetActor`는 또한 `UGameplayAbility::CancelTaskByInstanceName()`을 호출하여 타겟팅을 취소할 수 있습니다. 데이터 생성 시 AbilityTask를 종료하지 않아야 합니다.                                       |
+
+모든 EGameplayTargetingConfirmation::Type이 모든 `TargetActor`에서 지원되는 것은 아닙니다. 예를 들어, `AGameplayAbilityTargetActor_GroundTrace`는 Instant 확인을 지원하지 않습니다.
+
+`WaitTargetData` `AbilityTask`는 `AGameplayAbilityTargetActor` 클래스를 매개변수로 받아, `AbilityTask`가 활성화될 때마다 인스턴스를 생성하고 `AbilityTask`가 종료되면 `TargetActor`를 파괴합니다. `WaitTargetDataUsingActor` `AbilityTask`는 이미 생성된 `TargetActor`를 매개변수로 받지만, 여전히 `AbilityTask`가 종료될 때 `TargetActor`를 파괴합니다. 이 두 `AbilityTask`는 새로운 `TargetActor`를 생성하거나 요구하므로 비효율적일 수 있습니다. 이는 프로토타입에 적합하지만, 자동 소총처럼 지속적으로 `TargetData`를 생성해야 하는 경우, 최적화를 고려할 수 있습니다. GASShooter는 [`AGameplayAbilityTargetActor`](https://github.com/tranek/GASShooter/blob/master/Source/GASShooter/Public/Characters/Abilities/GSGATA_Trace.h)의 사용자 정의 서브클래스와 새로 작성된 [`WaitTargetDataWithReusableActor`](https://github.com/tranek/GASShooter/blob/master/Source/GASShooter/Public/Characters/Abilities/AbilityTasks/GSAT_WaitTargetDataUsingActor.h) `AbilityTask`를 사용하여 `TargetActor`를 재사용하고 파괴하지 않습니다.
+
+`TargetActor`는 기본적으로 복제되지 않지만, 게임에서 다른 플레이어에게 로컬 플레이어의 타겟팅 위치를 보여줄 필요가 있다면 복제할 수 있습니다. `TargetActor`는 `WaitTargetData` `AbilityTask`를 통해 서버와 통신하는 기본 기능을 포함하고 있습니다. 
+
+만약 `TargetActor`의 `ShouldProduceTargetDataOnServer` 속성이 `false`로 설정되어 있다면, 클라이언트는 타겟팅이 확인되면 `TargetData`를 `UAbilityTask_WaitTargetData::OnTargetDataReadyCallback()`의 `CallServerSetReplicatedTargetData()`통해 서버에 RPC로 확인을 전송합니다. 
+
+만약 `ShouldProduceTargetDataOnServer`가 `true`라면, 클라이언트는 `UAbilityTask_WaitTargetData::OnTargetDataReadyCallback()`의 `EAbilityGenericReplicatedEvent::GenericConfirm`을 RPC로 서버에 보내고, 서버는 이를 받아 트레이스 또는 오버랩을 수행하여 서버에서 데이터를 생성합니다. 
+
+클라이언트가 타겟팅을 취소하면, `UAbilityTask_WaitTargetData::OnTargetDataCancelledCallback`의 `EAbilityGenericReplicatedEvent::GenericCancel`을 RPC로 서버에 보내고, 서버는 이를 받아 타겟팅을 취소합니다. 이처럼 `TargetActor`와 `WaitTargetData` `AbilityTask`는 많은 델리게이트를 사용합니다. `TargetActor`는 타겟팅 데이터를 준비, 확인, 또는 취소하는 델리게이트를 방송하고, `WaitTargetData`는 이를 듣고 `GameplayAbility` 및 서버로 전달합니다. 서버로 `TargetData`를 보낼 때는 부정행위를 방지하기 위해 서버에서 데이터가 합리적인지 검증하는 것이 좋습니다. 서버에서 직접 `TargetData`를 생성하면 이 문제를 완전히 피할 수 있지만, 클라이언트에서 예측 오류가 발생할 수 있습니다.
+
+사용하는 `AGameplayAbilityTargetActor`의 서브클래스에 따라, `WaitTargetData` `AbilityTask` 노드에서 여러 `ExposeOnSpawn` 매개변수가 노출됩니다. 일부 일반적인 매개변수는 다음과 같습니다:
+
+| Common `TargetActor` Parameters | 정의                                                                                                                                                                                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Debug                           | `true`일 경우, `TargetActor`가 트레이스를 수행할 때마다 디버그 트레이싱/오버랩 정보를 그려냅니다. Shipping이 아닌 빌드에서만 표시됩니다. 일반적으로 `non-Instant` `TargetActor`는 `Tick()`에서 트레이스를 수행하므로 이 디버그 드로우 호출도 `Tick()`에서 발생합니다.                                                       |
+| Filter                          | [선택] 트레이스/오버랩이 발생할 때 `Actor`를 필터링하는 특수 구조체입니다. 일반적으로 플레이어의 `Pawn`을 제외하거나 특정 클래스만 타겟팅하려는 경우 사용됩니다. 더 고급 사용 사례는 [Target Data Filters](#concepts-target-data-filters)을 참조하세요. |
+| Reticle Class                   | [선택] `TargetActor`가 생성할 `AGameplayAbilityWorldReticle`의 서브클래스입니다.                                                                                                                                                                                                                                 |
+| Reticle Parameters              | [Optional] Reticle을 설정합니다. [Reticles](#concepts-targeting-reticles)을 참조하세요.                                                                                                                                                                                                                                        |
+| Start Location                  | 트레이싱이 시작될 위치를 설정하는 특수 구조체입니다. 보통 플레이어의 시점, 무기 총구, 또는 `Pawn`의 위치입니다.                                                                                                                                                                          |
+기본 `TargetActor` 클래스에서는 `Actor`가 트레이스/오버랩 내에 있을 때만 유효한 타겟으로 간주됩니다. 트레이스/오버랩을 벗어나면 더 이상 유효하지 않습니다. `TargetActor`가 마지막 유효 타겟을 기억하도록 하려면 커스텀 `TargetActor` 클래스에서 이 기능을 추가해야 합니다. 이를 Persistent Target(지속 타겟)이라고 부르며, `TargetActor`가 확인 또는 취소를 받기 전까지, 새로운 유효 타겟을 찾기 전까지, 또는 타겟이 더 이상 유효하지 않으면 계속 유지됩니다. GASShooter는 로켓 발사기의 보조 능력에서 지속 타겟을 사용하여 유도 로켓 타겟팅을 구현합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-target-data-filters"></a>
+#### 4.11.3 Target Data Filters
+
+`Make GameplayTargetDataFilter`와 `Make Filter Handle` 노드를 사용하여 플레이어의 `Pawn`을 제외하거나 특정 클래스만 선택할 수 있습니다. 더 고급 필터링이 필요한 경우, `FGameplayTargetDataFilter`를 서브클래싱하여 `FilterPassesForActor` 함수를 오버라이드할 수 있습니다.
+
+```c++
+USTRUCT(BlueprintType)
+struct GASDOCUMENTATION_API FGDNameTargetDataFilter : public FGameplayTargetDataFilter
+{
+	GENERATED_BODY()
+
+	/** 액터가 Filter를 통과하면 타겟팅되도록 true를 반환합니다 */
+	virtual bool FilterPassesForActor(const AActor* ActorToBeFiltered) const override;
+};
+```
+
+하지만 이것은 `Wait Target Data` 노드에 바로 적용되지 않으며, `FGameplayTargetDataFilterHandle`이 필요합니다. 서브클래스를 받아들이도록 새로운 커스텀 `Make Filter Handle`을 만들어야 합니다:
+
+```c++
+FGameplayTargetDataFilterHandle UGDTargetDataFilterBlueprintLibrary::MakeGDNameFilterHandle(FGDNameTargetDataFilter Filter, AActor* FilterActor)
+{
+	FGameplayTargetDataFilter* NewFilter = new FGDNameTargetDataFilter(Filter);
+	NewFilter->InitializeFilterContext(FilterActor);
+
+	FGameplayTargetDataFilterHandle FilterHandle;
+	FilterHandle.Filter = TSharedPtr<FGameplayTargetDataFilter>(NewFilter);
+	return FilterHandle;
+}
+```
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-targeting-reticles"></a>
+#### 4.11.4 Gameplay Ability World Reticles
+
+[`AGameplayAbilityWorldReticles`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/AGameplayAbilityWorldReticle/index.html)(`Reticle`)는 즉시 확인되지 않은 [`TargetActors`](#concepts-targeting-actors)를 사용할 때 타겟팅 중인 **대상**을 시각화합니다. `TargetActor`는 모든 `Reticle`의 생성과 소멸 수명을 담당합니다. `Reticle`은 `AActor`이므로 모든 종류의 시각적 컴포넌트를 사용하여 표현할 수 있습니다. 이는 [GASShooter](https://github.com/tranek/GASShooter) 화면 공간에서 항상 플레이어의 카메라를 향해 보이는 UMG 위젯을 표시하는 WidgetComponent와 같은 시각적 컴포넌트를 사용할 수 있습니다. `Reticle`은 자신이 어떤 `AActor`에 있는지 알지 못하지만, 커스텀 `TargetActor`에서 이 기능을 서브클래싱하여 추가할 수 있습니다. 일반적으로 `TargetActor`는 매 `Tick()`마다 `Reticle`의 위치를 타겟의 위치로 업데이트합니다.
+
+GASShooter에서는 `Reticle`을 사용하여 로켓 발사기의 보조 능력인 유도 미사일의 잠금된 타겟을 표시합니다. 적의 빨간 표시가 `Reticle`이고, 유사한 흰색 이미지는 로켓 발사기의 조준선입니다.
+
+![Reticles in GASShooter](https://github.com/tranek/GASDocumentation/raw/master/Images/gameplayabilityworldreticle.png)
+
+
+`Reticle`은 디자이너가 개발할 수 있도록 Blueprint에서 구현할 수 있는 몇 가지 `BlueprintImplementableEvent`를 제공합니다:
+
+```c++
+/** bIsTargetValid 값이 변경될 때마다 호출됩니다. */
+UFUNCTION(BlueprintImplementableEvent, Category = Reticle)
+void OnValidTargetChanged(bool bNewValue);
+
+/** bIsTargetAnActor 값이 변경될 때마다 호출됩니다. */
+UFUNCTION(BlueprintImplementableEvent, Category = Reticle)
+void OnTargetingAnActor(bool bNewValue);
+
+UFUNCTION(BlueprintImplementableEvent, Category = Reticle)
+void OnParametersInitialized();
+
+UFUNCTION(BlueprintImplementableEvent, Category = Reticle)
+void SetReticleMaterialParamFloat(FName ParamName, float value);
+
+UFUNCTION(BlueprintImplementableEvent, Category = Reticle)
+void SetReticleMaterialParamVector(FName ParamName, FVector value);
+```
+
+`Reticle`은 TargetActor가 제공하는 [`FWorldReticleParameters`](https://docs.unrealengine.com/ko-kr/API/Plugins/GameplayAbilities/Abilities/FWorldReticleParameters/index.html)를 선택적으로 사용할 수 있습니다. 기본 구조체는 하나의 변수인 `FVector AOEScale`만 제공합니다. 이 구조체는 서브클래싱이 가능하지만, `TargetActor`는 기본 구조체만 수용할 수 있습니다. 기본 `TargetActor`에서 이 구조체를 서브클래싱할 수 없다는 점은 다소 단기적인 시각으로 보입니다. 그러나 자신만의 커스텀 `TargetActor`를 만들면, 자신만의 커스텀 Reticle 파라미터 구조체를 제공하고, 이를 `AGameplayAbilityWorldReticles`의 서브클래스를 생성할 때 수동으로 전달할 수 있습니다.
+
+`Reticle`은 기본적으로 리플리케이트되지 않지만, 로컬 플레이어가 타겟팅하는 대상을 다른 플레이어에게 표시할 필요가 있는 경우 리플리케이트할 수 있습니다.
+
+`Reticle`은 기본 `TargetActor`를 사용할 경우 현재 유효한 타겟에만 표시됩니다. 예를 들어, `AGameplayAbilityTargetActor_SingleLineTrace`를 사용하여 타겟을 추적하는 경우, `Reticle`은 적이 추적 경로에 있을 때만 표시됩니다. 시선을 돌리면 적은 더 이상 유효한 타겟이 아니므로 `Reticle`은 사라집니다. `Reticle`이 마지막 유효한 타겟에 계속 표시되도록 하려면, `TargetActor`를 커스터마이징하여 마지막 유효한 타겟을 기억하고 그 위에 Reticle을 유지해야 합니다. 이러한 타겟을 지속 타겟(persistent target)이라고 하며, 이는 `TargetActor`가 확인 또는 취소를 받을 때, `TargetActor`가 새로운 유효한 타겟을 찾을 때, 또는 타겟이 더 이상 유효하지 않게 될 때까지 유지됩니다. GASShooter에서는 로켓 발사기의 보조 능력인 유도 미사일 타겟팅을 위해 지속 타겟을 사용합니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
+<a name="concepts-targeting-containers"></a>
+#### 4.11.5 Gameplay Effect Containers Targeting
+
+[`GameplayEffectContainers`](#concepts-ge-containers)는 [`TargetData`](#concepts-targeting-data)를 생성하는 효율적인 방법을 옵션으로 제공합니다. 해당 타겟팅은 `EffectContainer`가 클라이언트와 서버에서 적용될 때 즉시 발생합니다. 이는 [`TargetActors`](#concepts-targeting-actors)보다 효율적이며, 타겟팅 객체의 CDO에서 실행되므로(액터를 생성하거나 파괴하지 않음) 성능이 뛰어납니다. 그러나 플레이어 입력이 없고, 확인 없이 즉시 발생하며, 취소할 수 없고, 클라이언트에서 서버로 데이터를 전송할 수 없습니다(두 곳에서 데이터가 생성). 이 방식은 인스턴트 트레이스와 충돌 오버랩에 잘 작동합니다. 에픽 게임즈의 [Action RPG 샘플 프로젝트](https://www.unrealengine.com/marketplace/en-US/product/action-rpg)는 두 가지 예시 타겟팅 방법을 GameplayEffectContainer와 함께 제공합니다. 하나는 Ability 소유자를 타겟으로 하고, 다른 하나는 이벤트에서 `TargetData`를 가져오는 방식입니다. 또한, Blueprint에서 플레이어로부터 일정 오프셋(자식 Blueprint 클래스에서 설정)을 두고 인스턴트 구체 트레이스를 수행하는 예시도 구현되어 있습니다. `URPGTargetType`을 C++ 또는 Blueprint에서 서브클래스하여 자신만의 타겟팅 유형을 만들 수 있습니다.
+
+**[⬆ 위로 가기](#table-of-contents)**
+
